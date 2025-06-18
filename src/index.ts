@@ -4,7 +4,6 @@ import WebSocket from 'ws'
 async function run(): Promise<void> {
   try {
     const tuskUrl: string = core.getInput('tuskUrl', { required: true })
-    const runId: string = core.getInput('runId', { required: true })
 
     // The backend's WebSocket endpoint is passed in tuskUrl, which already contains the full path.
     // e.g., wss://your-tusk-instance.com/ws/run/<run-id>
@@ -32,7 +31,6 @@ async function run(): Promise<void> {
       core.info(`⬆️ Sending response to backend...`)
       ws.send(
         JSON.stringify({
-          runId: runId,
           originalCommand: message.command,
           payload: result
         })

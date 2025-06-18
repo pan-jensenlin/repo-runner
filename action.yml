@@ -1,23 +1,14 @@
-name: The name of your action here
-description: Provide a description here
-author: Your name or organization here
+name: Tusk Repo Runner
+description: Tusk Repo Runner
+author: Tusk
 
-# Add your action's branding here. This will appear on the GitHub Marketplace.
 branding:
-  icon: heart
-  color: red
+  icon: 'code'
+  color: 'purple'
 
-# Define your inputs here.
 inputs:
-  milliseconds:
-    description: Your input description here
-    required: true
-    default: '1000'
-
-# Define your outputs here.
-outputs:
-  time:
-    description: Your output description here
+  tuskUrl:
+    description: The URL of the Tusk instance to connect to
 
 runs:
   using: node20

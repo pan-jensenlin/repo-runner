@@ -32209,7 +32209,6 @@ requireWebsocketServer();
 async function run() {
     try {
         const tuskUrl = coreExports.getInput('tuskUrl', { required: true });
-        const runId = coreExports.getInput('runId', { required: true });
         // The backend's WebSocket endpoint is passed in tuskUrl, which already contains the full path.
         // e.g., wss://your-tusk-instance.com/ws/run/<run-id>
         const websocketUrl = new URL(tuskUrl);
@@ -32229,7 +32228,6 @@ async function run() {
             // Send the result back immediately
             coreExports.info(`⬆️ Sending response to backend...`);
             ws.send(JSON.stringify({
-                runId: runId,
                 originalCommand: message.command,
                 payload: result
             }));

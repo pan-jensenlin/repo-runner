@@ -32209,21 +32209,24 @@ requireWebsocketServer();
 async function run() {
     try {
         const tuskUrl = coreExports.getInput('tuskUrl', { required: true });
-        // The backend's WebSocket endpoint is passed in tuskUrl, which already contains the full path.
-        // e.g., wss://your-tusk-instance.com/ws/run/<run-id>
-        const websocketUrl = new URL(tuskUrl);
-        // The protocol is 'ws' for http and 'wss' for https.
-        websocketUrl.protocol = websocketUrl.protocol.replace('http', 'ws');
-        coreExports.info(`Connecting to WebSocket endpoint: ${websocketUrl.toString()}`);
-        const ws = new WebSocket(websocketUrl.toString());
+        const runId = coreExports.getInput('runId', { required: true });
+        const url = new URL(tuskUrl);
+        const websocketUrl = `${url.protocol === 'https:' ? 'wss:' : 'ws:'}//${url.host}/ws/sandbox`;
+        coreExports.info(`Connecting to WebSocket endpoint: ${websocketUrl}`);
+        const ws = new WebSocket(websocketUrl);
         ws.on('open', () => {
-            coreExports.info('✅ WebSocket connection established. Awaiting instructions...');
+            coreExports.info('✅ WebSocket connection established. Sending auth message...');
+            // Immediately send the authentication message with the runId
+            ws.send(JSON.stringify({
+                type: 'auth',
+                runId: runId
+            }));
+            coreExports.info('✅ Auth message sent. Awaiting instructions...');
         });
         ws.on('message', async (data) => {
             const message = JSON.parse(data.toString());
             coreExports.info(`⬇️ Received message from backend: ${JSON.stringify(message)}`);
             // This is where you invoke lsproxy or other tools
-            // For example, the backend sends: { command: 'get_definition', params: { file: '...', line: '...' } }
             const result = await runLspCommand(message.command, message.params);
             // Send the result back immediately
             coreExports.info(`⬆️ Sending response to backend...`);
@@ -32234,7 +32237,10 @@ async function run() {
         });
         ws.on('close', (code, reason) => {
             coreExports.info(`🔌 WebSocket connection closed. Code: ${code}, Reason: ${reason.toString()}`);
-            // The backend has finished sending commands, so this step can successfully exit.
+            if (code !== 1000) {
+                // A non-1000 code might indicate an issue.
+                coreExports.setFailed(`WebSocket closed with non-standard code: ${code}`);
+            }
         });
         ws.on('error', (error) => {
             // Fail the GitHub Action step if the connection errors out
@@ -32247,14 +32253,8 @@ async function run() {
     }
 }
 async function runLspCommand(command, params) {
-    // Placeholder for your actual logic to interact with lsproxy
-    // You would use child_process.exec or a similar method here
-    // to call your lsproxy client.
     coreExports.info(`Executing LSP command: ${command} with params: ${JSON.stringify(params)}`);
-    //
-    // const { stdout } = await execAsync(`lsproxy-cli ${command} --params '${JSON.stringify(params)}'`);
-    // return JSON.parse(stdout);
-    //
+    // Placeholder for your actual logic to interact with lsproxy
     return { status: 'success', data: `result for ${command}` };
 }
 run();

@@ -5,6 +5,14 @@ export enum BackendCommandType {
   TERMINATE = "terminate",
 }
 
+export enum LsproxyAction {
+  START = "start",
+  LIST_FILES = "list-files",
+  GET_DEFINITION = "get-definition",
+  GET_REFERENCES = "get-references",
+  GET_DEFINITIONS_IN_FILE = "get-definitions-in-file",
+}
+
 export enum RunnerMessageType {
   RESPONSE = "response",
   LOG = "log",
@@ -15,4 +23,4 @@ export enum RunnerResponseStatus {
   ERROR = "error",
 }
 
-export type LogStreamType = "stdout" | "stderr";
+export type LogStreamType = "stdout" | "stderr" | "lsproxy-out" | "lsproxy-err";

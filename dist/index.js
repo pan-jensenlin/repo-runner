@@ -32213,6 +32213,14 @@ var BackendCommandType;
     BackendCommandType["LSPROXY_COMMAND"] = "lsproxy_command";
     BackendCommandType["TERMINATE"] = "terminate";
 })(BackendCommandType || (BackendCommandType = {}));
+var LsproxyAction;
+(function (LsproxyAction) {
+    LsproxyAction["START"] = "start";
+    LsproxyAction["LIST_FILES"] = "list-files";
+    LsproxyAction["GET_DEFINITION"] = "get-definition";
+    LsproxyAction["GET_REFERENCES"] = "get-references";
+    LsproxyAction["GET_DEFINITIONS_IN_FILE"] = "get-definitions-in-file";
+})(LsproxyAction || (LsproxyAction = {}));
 var RunnerMessageType;
 (function (RunnerMessageType) {
     RunnerMessageType["RESPONSE"] = "response";
@@ -32256,6 +32264,9 @@ function sendResponse(ws, originalCommandId, status, payload) {
     ws.send(JSON.stringify(message));
 }
 
+// --- lsproxy State ---
+let lsproxyProcess = null;
+let isLsproxyReady = false;
 function handleExecuteCommand(ws, commandId, params) {
     coreExports.info(`[${commandId}] Executing: ${params.command}`);
     const proc = exec$1(params.command, {
@@ -32267,12 +32278,13 @@ function handleExecuteCommand(ws, commandId, params) {
     let stderr = "";
     proc.stdout?.on("data", (data) => {
         const message = data.toString();
-        sendLog(ws, commandId, "stdout", message);
+        // This can be noisy, but useful for debugging
+        // sendLog(ws, commandId, "stdout", message);
         stdout += message;
     });
     proc.stderr?.on("data", (data) => {
         const message = data.toString();
-        sendLog(ws, commandId, "stderr", message);
+        // sendLog(ws, commandId, "stderr", message);
         stderr += message;
     });
     proc.on("exit", (code) => {
@@ -32298,11 +32310,21 @@ function handleExecuteCommand(ws, commandId, params) {
 }
 function handleLsproxyCommand(ws, commandId, params) {
     coreExports.info(`[${commandId}] Received lsproxy command: ${params.action}`);
-    // TODO: Implement logic to call lsproxy using `curl` via `handleExecuteCommand`.
-    // This is a placeholder sending an immediate success response.
-    sendResponse(ws, commandId, RunnerResponseStatus.SUCCESS, {
-        message: `Lsproxy action '${params.action}' executed (placeholder).`,
-    });
+    switch (params.action) {
+        case LsproxyAction.START:
+            return startLsproxy(ws, commandId);
+        // Add other lsproxy actions here, routing to the API helper
+        case LsproxyAction.GET_DEFINITIONS_IN_FILE:
+            return runLsproxyApiCommand(ws, commandId, `/symbol/definitions-in-file?file_path=${encodeURIComponent(params.actionParams.filePath)}`);
+        // Example for a POST request
+        // case LsproxyAction.GET_DEFINITION:
+        //   return runLsproxyApiCommand(ws, commandId, "/symbol/find-definition", "POST", params.actionParams);
+        default:
+            coreExports.warning(`Unknown lsproxy action: ${params.action}`);
+            return sendResponse(ws, commandId, RunnerResponseStatus.ERROR, {
+                message: `Unknown lsproxy action: ${params.action}`,
+            });
+    }
 }
 function handleCancelCommand(ws, commandId, params) {
     const { commandIdToCancel } = params;
@@ -32328,11 +32350,104 @@ function handleTerminate(ws) {
         coreExports.info(`  - Killing process for command ${id}`);
         proc.kill();
     });
+    if (lsproxyProcess) {
+        coreExports.info(`  - Killing lsproxy process`);
+        lsproxyProcess.kill();
+    }
     ws.close(1000, "Work complete");
     // Allow time for the close frame to be sent before exiting.
     setTimeout(() => {
         process.exit(0);
     }, 1000);
+}
+// --- Internal Helper Functions ---
+function startLsproxy(ws, commandId) {
+    if (lsproxyProcess) {
+        sendLog(ws, commandId, "stdout", "lsproxy is already running or starting.");
+        if (isLsproxyReady) {
+            sendResponse(ws, commandId, RunnerResponseStatus.SUCCESS, {
+                message: "lsproxy is already running.",
+            });
+        }
+        return;
+    }
+    coreExports.info(`[${commandId}] Starting lsproxy...`);
+    const repoPath = process.env.GITHUB_WORKSPACE || "/github/workspace";
+    const lsproxyCmd = `USE_AUTH=false lsproxy --mount-dir ${repoPath}`;
+    const proc = exec$1(lsproxyCmd, { shell: "/bin/bash" });
+    lsproxyProcess = proc;
+    runningProcesses.set("lsproxy_process", proc); // Track for termination
+    proc.stdout?.on("data", (data) => sendLog(ws, commandId, "lsproxy-out", data.toString()));
+    proc.stderr?.on("data", (data) => sendLog(ws, commandId, "lsproxy-err", data.toString()));
+    proc.on("exit", (code) => {
+        coreExports.error(`lsproxy process exited unexpectedly with code ${code}`);
+        lsproxyProcess = null;
+        isLsproxyReady = false;
+        runningProcesses.delete("lsproxy_process");
+    });
+    // Poll for health
+    const maxRetries = 60; // Poll for 2 minutes
+    let retries = 0;
+    const pollInterval = setInterval(() => {
+        const healthCheckProc = exec$1("curl -s http://localhost:4444/v1/system/health");
+        let healthStdout = "";
+        healthCheckProc.stdout?.on("data", (data) => (healthStdout += data));
+        healthCheckProc.on("exit", (code) => {
+            if (code === 0 && healthStdout) {
+                try {
+                    if (JSON.parse(healthStdout).status === "ok") {
+                        clearInterval(pollInterval);
+                        coreExports.info("✅ lsproxy is healthy and ready.");
+                        isLsproxyReady = true;
+                        sendResponse(ws, commandId, RunnerResponseStatus.SUCCESS, {
+                            message: "lsproxy started successfully.",
+                        });
+                        return;
+                    }
+                }
+                catch { }
+            }
+            retries++;
+            if (retries > maxRetries) {
+                clearInterval(pollInterval);
+                coreExports.error("lsproxy did not become healthy in time.");
+                sendResponse(ws, commandId, RunnerResponseStatus.ERROR, {
+                    message: "lsproxy failed to start in time.",
+                });
+                proc.kill();
+            }
+        });
+    }, 2000);
+}
+function runLsproxyApiCommand(ws, commandId, endpoint, method = "GET", body = null) {
+    if (!isLsproxyReady) {
+        sendResponse(ws, commandId, RunnerResponseStatus.ERROR, {
+            message: "lsproxy is not ready.",
+        });
+        return;
+    }
+    const bodyData = body ? `--data '${JSON.stringify(body)}'` : "";
+    const headers = "--header 'Content-Type: application/json'";
+    const curlCmd = `curl -s -X ${method} http://localhost:4444/v1${endpoint} ${headers} ${bodyData}`;
+    const proc = exec$1(curlCmd, { shell: "/bin/bash" });
+    let stdout = "";
+    proc.stdout?.on("data", (data) => (stdout += data));
+    proc.on("exit", (code) => {
+        if (code !== 0) {
+            return sendResponse(ws, commandId, RunnerResponseStatus.ERROR, {
+                message: `Lsproxy API command failed with exit code ${code}`,
+            });
+        }
+        try {
+            sendResponse(ws, commandId, RunnerResponseStatus.SUCCESS, JSON.parse(stdout));
+        }
+        catch (e) {
+            sendResponse(ws, commandId, RunnerResponseStatus.ERROR, {
+                message: "Failed to parse lsproxy JSON response.",
+                response: stdout,
+            });
+        }
+    });
 }
 
 async function run() {

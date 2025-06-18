@@ -1,20 +1,20 @@
 {
-  "name": "typescript-action",
-  "description": "GitHub Actions TypeScript template",
-  "version": "0.0.0",
+  "name": "repo-runner",
+  "description": "GitHub Actions for Tusk",
+  "version": "1.0.0",
   "author": "",
   "type": "module",
   "private": true,
-  "homepage": "https://github.com/actions/typescript-action",
+  "homepage": "https://usetusk.ai",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/actions/typescript-action.git"
+    "url": "git+https://github.com/Use-Tusk/repo-runner.git"
   },
   "bugs": {
-    "url": "https://github.com/actions/typescript-action/issues"
+    "url": "https://github.com/Use-Tusk/repo-runner/issues"
   },
   "keywords": [
-    "actions"
+    "tusk"
   ],
   "exports": {
     ".": "./dist/index.js"

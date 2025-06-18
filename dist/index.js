@@ -32232,7 +32232,6 @@ async function run() {
                 coreExports.info("🏁 Terminate command received. Shutting down gracefully...");
                 ws.close(1000, "Work complete");
                 process.exit(0);
-                return;
             }
             // This is where you invoke lsproxy or other tools
             const result = await runLspCommand(message.command, message.params);

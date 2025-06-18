@@ -1,5 +1,14 @@
 import * as core from "@actions/core";
 import WebSocket from "ws";
+import { BackendCommandType, RunnerResponseStatus } from "./types.js";
+import { runningProcesses } from "./processes.js";
+import {
+  handleExecuteCommand,
+  handleLsproxyCommand,
+  handleCancelCommand,
+  handleTerminate,
+} from "./handlers.js";
+import { sendResponse } from "./utils.js";
 
 async function run(): Promise<void> {
   try {
@@ -9,69 +18,66 @@ async function run(): Promise<void> {
     const url = new URL(tuskUrl);
     const websocketUrl = `${url.protocol === "https:" ? "wss:" : "ws:"}//${url.host}/ws/sandbox`;
 
-    core.info(`Connecting to WebSocket endpoint: ${websocketUrl}`);
+    core.info(`Connecting to WebSocket: ${websocketUrl}`);
 
     const ws = new WebSocket(websocketUrl);
 
+    // --- WebSocket event handlers ---
+
     ws.on("open", () => {
       core.info("✅ WebSocket connection established. Sending auth message...");
-      // Immediately send the authentication message with the runId
-      ws.send(
-        JSON.stringify({
-          type: "auth",
-          runId: runId,
-        }),
-      );
+      ws.send(JSON.stringify({ type: "auth", runId: runId }));
       core.info("✅ Auth message sent. Awaiting instructions...");
     });
 
     ws.on("message", async (data: WebSocket.Data) => {
-      const message = JSON.parse(data.toString());
-      core.info(`⬇️ Received message from backend: ${JSON.stringify(message)}`);
+      try {
+        const message = JSON.parse(data.toString());
+        core.info(`⬇️ Received command: ${message.command} (ID: ${message.commandId})`);
 
-      // The unique ID for this request
-      const commandId = message.commandId;
-
-      if (message.command === "terminate") {
-        core.info("🏁 Terminate command received. Shutting down gracefully...");
-        ws.close(1000, "Work complete");
-        process.exit(0);
+        switch (message.command) {
+          case BackendCommandType.EXECUTE_COMMAND:
+            handleExecuteCommand(ws, message.commandId, message.params);
+            break;
+          case BackendCommandType.LSPROXY_COMMAND:
+            // Placeholder for lsproxy logic
+            handleLsproxyCommand(ws, message.commandId, message.params);
+            break;
+          case BackendCommandType.CANCEL_COMMAND:
+            handleCancelCommand(ws, message.commandId, message.params);
+            break;
+          case BackendCommandType.TERMINATE:
+            handleTerminate(ws);
+            break;
+          default:
+            core.warning(`Unknown command received: ${message.command}`);
+            sendResponse(ws, message.commandId, RunnerResponseStatus.ERROR, {
+              message: `Unknown command: ${message.command}`,
+            });
+        }
+      } catch (error) {
+        core.error(`Error processing message: ${data.toString()}`);
+        if (error instanceof Error) {
+          core.setFailed(error.message);
+        }
       }
-
-      // This is where you invoke lsproxy or other tools
-      const result = await runLspCommand(message.command, message.params);
-
-      // Send the result back immediately
-      core.info(`⬆️ Sending response to backend...`);
-      ws.send(
-        JSON.stringify({
-          originalCommandId: commandId, // Echo the ID back for correlation
-          payload: result,
-        }),
-      );
     });
 
     ws.on("close", (code, reason) => {
       core.info(`🔌 WebSocket connection closed. Code: ${code}, Reason: ${reason.toString()}`);
+      // Clean up any lingering processes on close
+      runningProcesses.forEach((proc) => proc.kill());
       if (code !== 1000) {
-        // A non-1000 code might indicate an issue.
         core.setFailed(`WebSocket closed with non-standard code: ${code}`);
       }
     });
 
     ws.on("error", (error) => {
-      // Fail the GitHub Action step if the connection errors out
       core.setFailed(`WebSocket error: ${error.message}`);
     });
   } catch (error) {
     if (error instanceof Error) core.setFailed(error.message);
   }
-}
-
-async function runLspCommand(command: string, params: any): Promise<any> {
-  core.info(`Executing LSP command: ${command} with params: ${JSON.stringify(params)}`);
-  // Placeholder for your actual logic to interact with lsproxy
-  return { status: "success", data: `result for ${command}` };
 }
 
 run();

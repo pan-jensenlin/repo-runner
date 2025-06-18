@@ -25,7 +25,7 @@ import require$$1$4 from 'url';
 import require$$3 from 'zlib';
 import require$$6 from 'string_decoder';
 import require$$0$a from 'diagnostics_channel';
-import require$$2$2 from 'child_process';
+import require$$2$2, { exec as exec$1 } from 'child_process';
 import require$$6$1 from 'timers';
 
 var commonjsGlobal = typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : {};
@@ -32206,51 +32206,190 @@ function requireWebsocketServer () {
 
 requireWebsocketServer();
 
+var BackendCommandType;
+(function (BackendCommandType) {
+    BackendCommandType["EXECUTE_COMMAND"] = "execute_command";
+    BackendCommandType["CANCEL_COMMAND"] = "cancel_command";
+    BackendCommandType["LSPROXY_COMMAND"] = "lsproxy_command";
+    BackendCommandType["TERMINATE"] = "terminate";
+})(BackendCommandType || (BackendCommandType = {}));
+var RunnerMessageType;
+(function (RunnerMessageType) {
+    RunnerMessageType["RESPONSE"] = "response";
+    RunnerMessageType["LOG"] = "log";
+})(RunnerMessageType || (RunnerMessageType = {}));
+var RunnerResponseStatus;
+(function (RunnerResponseStatus) {
+    RunnerResponseStatus["SUCCESS"] = "success";
+    RunnerResponseStatus["ERROR"] = "error";
+})(RunnerResponseStatus || (RunnerResponseStatus = {}));
+
+const runningProcesses = new Map();
+
+function sendLog(ws, commandId, stream, message) {
+    if (ws.readyState !== WebSocket.OPEN) {
+        coreExports.warning(`WebSocket not open. Cannot send log for ${commandId}`);
+        return;
+    }
+    const logMessage = {
+        command: RunnerMessageType.LOG,
+        commandId,
+        payload: {
+            stream,
+            message,
+        },
+    };
+    ws.send(JSON.stringify(logMessage));
+}
+function sendResponse(ws, originalCommandId, status, payload) {
+    if (ws.readyState !== WebSocket.OPEN) {
+        coreExports.warning(`WebSocket not open. Cannot send response for ${originalCommandId}`);
+        return;
+    }
+    const message = {
+        command: RunnerMessageType.RESPONSE,
+        originalCommandId,
+        status,
+        payload,
+    };
+    coreExports.info(`⬆️ Sending response for ${originalCommandId} with status ${status}`);
+    ws.send(JSON.stringify(message));
+}
+
+function handleExecuteCommand(ws, commandId, params) {
+    coreExports.info(`[${commandId}] Executing: ${params.command}`);
+    const proc = exec$1(params.command, {
+        shell: "/bin/bash",
+        maxBuffer: 10 * 1024 * 1024 /* 10MB */,
+    });
+    runningProcesses.set(commandId, proc);
+    let stdout = "";
+    let stderr = "";
+    proc.stdout?.on("data", (data) => {
+        const message = data.toString();
+        sendLog(ws, commandId, "stdout", message);
+        stdout += message;
+    });
+    proc.stderr?.on("data", (data) => {
+        const message = data.toString();
+        sendLog(ws, commandId, "stderr", message);
+        stderr += message;
+    });
+    proc.on("exit", (code) => {
+        coreExports.info(`[${commandId}] Finished with exit code: ${code}`);
+        runningProcesses.delete(commandId);
+        const payload = {
+            exitCode: code,
+            stdout: stdout,
+            stderr: stderr,
+        };
+        const status = code === 0 ? RunnerResponseStatus.SUCCESS : RunnerResponseStatus.ERROR;
+        sendResponse(ws, commandId, status, payload);
+    });
+    proc.on("error", (err) => {
+        coreExports.error(`[${commandId}] Failed to start command: ${err.message}`);
+        runningProcesses.delete(commandId);
+        sendResponse(ws, commandId, RunnerResponseStatus.ERROR, {
+            message: `Failed to execute command: ${err.message}`,
+            exitCode: -1, // Custom code for exec error
+            stderr: err.message,
+        });
+    });
+}
+function handleLsproxyCommand(ws, commandId, params) {
+    coreExports.info(`[${commandId}] Received lsproxy command: ${params.action}`);
+    // TODO: Implement logic to call lsproxy using `curl` via `handleExecuteCommand`.
+    // This is a placeholder sending an immediate success response.
+    sendResponse(ws, commandId, RunnerResponseStatus.SUCCESS, {
+        message: `Lsproxy action '${params.action}' executed (placeholder).`,
+    });
+}
+function handleCancelCommand(ws, commandId, params) {
+    const { commandIdToCancel } = params;
+    const proc = runningProcesses.get(commandIdToCancel);
+    if (proc) {
+        coreExports.info(`[${commandIdToCancel}] Received cancellation request. Terminating process.`);
+        proc.kill("SIGTERM"); // Send SIGTERM for graceful shutdown
+        runningProcesses.delete(commandIdToCancel);
+        sendResponse(ws, commandId, RunnerResponseStatus.SUCCESS, {
+            message: `Command ${commandIdToCancel} cancelled.`,
+        });
+    }
+    else {
+        coreExports.warning(`[${commandIdToCancel}] Request to cancel non-existent or completed command.`);
+        sendResponse(ws, commandId, RunnerResponseStatus.ERROR, {
+            message: `Command ${commandIdToCancel} not found for cancellation.`,
+        });
+    }
+}
+function handleTerminate(ws) {
+    coreExports.info("🏁 Terminate command received. Killing all running processes and shutting down...");
+    runningProcesses.forEach((proc, id) => {
+        coreExports.info(`  - Killing process for command ${id}`);
+        proc.kill();
+    });
+    ws.close(1000, "Work complete");
+    // Allow time for the close frame to be sent before exiting.
+    setTimeout(() => {
+        process.exit(0);
+    }, 1000);
+}
+
 async function run() {
     try {
         const tuskUrl = coreExports.getInput("tuskUrl", { required: true });
         const runId = coreExports.getInput("runId", { required: true });
         const url = new URL(tuskUrl);
         const websocketUrl = `${url.protocol === "https:" ? "wss:" : "ws:"}//${url.host}/ws/sandbox`;
-        coreExports.info(`Connecting to WebSocket endpoint: ${websocketUrl}`);
+        coreExports.info(`Connecting to WebSocket: ${websocketUrl}`);
         const ws = new WebSocket(websocketUrl);
+        // --- WebSocket event handlers ---
         ws.on("open", () => {
             coreExports.info("✅ WebSocket connection established. Sending auth message...");
-            // Immediately send the authentication message with the runId
-            ws.send(JSON.stringify({
-                type: "auth",
-                runId: runId,
-            }));
+            ws.send(JSON.stringify({ type: "auth", runId: runId }));
             coreExports.info("✅ Auth message sent. Awaiting instructions...");
         });
         ws.on("message", async (data) => {
-            const message = JSON.parse(data.toString());
-            coreExports.info(`⬇️ Received message from backend: ${JSON.stringify(message)}`);
-            // The unique ID for this request
-            const commandId = message.commandId;
-            if (message.command === "terminate") {
-                coreExports.info("🏁 Terminate command received. Shutting down gracefully...");
-                ws.close(1000, "Work complete");
-                process.exit(0);
+            try {
+                const message = JSON.parse(data.toString());
+                coreExports.info(`⬇️ Received command: ${message.command} (ID: ${message.commandId})`);
+                switch (message.command) {
+                    case BackendCommandType.EXECUTE_COMMAND:
+                        handleExecuteCommand(ws, message.commandId, message.params);
+                        break;
+                    case BackendCommandType.LSPROXY_COMMAND:
+                        // Placeholder for lsproxy logic
+                        handleLsproxyCommand(ws, message.commandId, message.params);
+                        break;
+                    case BackendCommandType.CANCEL_COMMAND:
+                        handleCancelCommand(ws, message.commandId, message.params);
+                        break;
+                    case BackendCommandType.TERMINATE:
+                        handleTerminate(ws);
+                        break;
+                    default:
+                        coreExports.warning(`Unknown command received: ${message.command}`);
+                        sendResponse(ws, message.commandId, RunnerResponseStatus.ERROR, {
+                            message: `Unknown command: ${message.command}`,
+                        });
+                }
             }
-            // This is where you invoke lsproxy or other tools
-            const result = await runLspCommand(message.command, message.params);
-            // Send the result back immediately
-            coreExports.info(`⬆️ Sending response to backend...`);
-            ws.send(JSON.stringify({
-                originalCommandId: commandId, // Echo the ID back for correlation
-                payload: result,
-            }));
+            catch (error) {
+                coreExports.error(`Error processing message: ${data.toString()}`);
+                if (error instanceof Error) {
+                    coreExports.setFailed(error.message);
+                }
+            }
         });
         ws.on("close", (code, reason) => {
             coreExports.info(`🔌 WebSocket connection closed. Code: ${code}, Reason: ${reason.toString()}`);
+            // Clean up any lingering processes on close
+            runningProcesses.forEach((proc) => proc.kill());
             if (code !== 1000) {
-                // A non-1000 code might indicate an issue.
                 coreExports.setFailed(`WebSocket closed with non-standard code: ${code}`);
             }
         });
         ws.on("error", (error) => {
-            // Fail the GitHub Action step if the connection errors out
             coreExports.setFailed(`WebSocket error: ${error.message}`);
         });
     }
@@ -32258,11 +32397,6 @@ async function run() {
         if (error instanceof Error)
             coreExports.setFailed(error.message);
     }
-}
-async function runLspCommand(command, params) {
-    coreExports.info(`Executing LSP command: ${command} with params: ${JSON.stringify(params)}`);
-    // Placeholder for your actual logic to interact with lsproxy
-    return { status: "success", data: `result for ${command}` };
 }
 run();
 //# sourceMappingURL=index.js.map

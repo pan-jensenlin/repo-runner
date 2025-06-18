@@ -32226,7 +32226,13 @@ async function run() {
         ws.on('message', async (data) => {
             const message = JSON.parse(data.toString());
             coreExports.info(`⬇️ Received message from backend: ${JSON.stringify(message)}`);
-            // This is where you invoke lsproxy or other tools
+            // Handle the terminate command specifically
+            if (message.command === 'terminate') {
+                coreExports.info('🏁 Terminate command received. Shutting down gracefully...');
+                ws.close(1000, 'Work complete'); // Close the connection with a standard success code
+                process.exit(0); // Exit the action with a success code
+                return;
+            }
             const result = await runLspCommand(message.command, message.params);
             // Send the result back immediately
             coreExports.info(`⬆️ Sending response to backend...`);

@@ -3,8 +3,8 @@ description: Tusk Repo Runner
 author: Tusk
 
 branding:
-  icon: 'code'
-  color: 'purple'
+  icon: "code"
+  color: "purple"
 
 inputs:
   tuskUrl:

@@ -32208,47 +32208,49 @@ requireWebsocketServer();
 
 async function run() {
     try {
-        const tuskUrl = coreExports.getInput('tuskUrl', { required: true });
-        const runId = coreExports.getInput('runId', { required: true });
+        const tuskUrl = coreExports.getInput("tuskUrl", { required: true });
+        const runId = coreExports.getInput("runId", { required: true });
         const url = new URL(tuskUrl);
-        const websocketUrl = `${url.protocol === 'https:' ? 'wss:' : 'ws:'}//${url.host}/ws/sandbox`;
+        const websocketUrl = `${url.protocol === "https:" ? "wss:" : "ws:"}//${url.host}/ws/sandbox`;
         coreExports.info(`Connecting to WebSocket endpoint: ${websocketUrl}`);
         const ws = new WebSocket(websocketUrl);
-        ws.on('open', () => {
-            coreExports.info('✅ WebSocket connection established. Sending auth message...');
+        ws.on("open", () => {
+            coreExports.info("✅ WebSocket connection established. Sending auth message...");
             // Immediately send the authentication message with the runId
             ws.send(JSON.stringify({
-                type: 'auth',
-                runId: runId
+                type: "auth",
+                runId: runId,
             }));
-            coreExports.info('✅ Auth message sent. Awaiting instructions...');
+            coreExports.info("✅ Auth message sent. Awaiting instructions...");
         });
-        ws.on('message', async (data) => {
+        ws.on("message", async (data) => {
             const message = JSON.parse(data.toString());
             coreExports.info(`⬇️ Received message from backend: ${JSON.stringify(message)}`);
-            // Handle the terminate command specifically
-            if (message.command === 'terminate') {
-                coreExports.info('🏁 Terminate command received. Shutting down gracefully...');
-                ws.close(1000, 'Work complete'); // Close the connection with a standard success code
-                process.exit(0); // Exit the action with a success code
+            // The unique ID for this request
+            const commandId = message.commandId;
+            if (message.command === "terminate") {
+                coreExports.info("🏁 Terminate command received. Shutting down gracefully...");
+                ws.close(1000, "Work complete");
+                process.exit(0);
                 return;
             }
+            // This is where you invoke lsproxy or other tools
             const result = await runLspCommand(message.command, message.params);
             // Send the result back immediately
             coreExports.info(`⬆️ Sending response to backend...`);
             ws.send(JSON.stringify({
-                originalCommand: message.command,
-                payload: result
+                originalCommandId: commandId, // Echo the ID back for correlation
+                payload: result,
             }));
         });
-        ws.on('close', (code, reason) => {
+        ws.on("close", (code, reason) => {
             coreExports.info(`🔌 WebSocket connection closed. Code: ${code}, Reason: ${reason.toString()}`);
             if (code !== 1000) {
                 // A non-1000 code might indicate an issue.
                 coreExports.setFailed(`WebSocket closed with non-standard code: ${code}`);
             }
         });
-        ws.on('error', (error) => {
+        ws.on("error", (error) => {
             // Fail the GitHub Action step if the connection errors out
             coreExports.setFailed(`WebSocket error: ${error.message}`);
         });
@@ -32261,7 +32263,7 @@ async function run() {
 async function runLspCommand(command, params) {
     coreExports.info(`Executing LSP command: ${command} with params: ${JSON.stringify(params)}`);
     // Placeholder for your actual logic to interact with lsproxy
-    return { status: 'success', data: `result for ${command}` };
+    return { status: "success", data: `result for ${command}` };
 }
 run();
 //# sourceMappingURL=index.js.map

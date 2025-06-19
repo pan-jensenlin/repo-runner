@@ -24,3 +24,36 @@ export enum RunnerResponseStatus {
 }
 
 export type LogStreamType = "stdout" | "stderr" | "lsproxy-out" | "lsproxy-err";
+
+export interface Position {
+  line: number;
+  character: number;
+}
+
+export interface FilePosition {
+  path: string;
+  position: Position;
+}
+
+export interface GetDefinitionParams extends FilePosition {}
+
+export interface GetReferencesParams {
+  identifier_position: FilePosition;
+  include_code_context_lines?: number;
+}
+
+export interface GetDefinitionsInFileParams {
+  path: string;
+}
+
+// --- Discriminated union for Lsproxy messages from backend ---
+
+export type LsproxyMessageParams =
+  | { action: LsproxyAction.START; actionParams?: never }
+  | { action: LsproxyAction.LIST_FILES; actionParams?: never }
+  | { action: LsproxyAction.GET_DEFINITION; actionParams: GetDefinitionParams }
+  | { action: LsproxyAction.GET_REFERENCES; actionParams: GetReferencesParams }
+  | {
+      action: LsproxyAction.GET_DEFINITIONS_IN_FILE;
+      actionParams: GetDefinitionsInFileParams;
+    };

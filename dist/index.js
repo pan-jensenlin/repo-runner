@@ -32313,16 +32313,19 @@ function handleLsproxyCommand(ws, commandId, params) {
     switch (params.action) {
         case LsproxyAction.START:
             return startLsproxy(ws, commandId);
-        // Add other lsproxy actions here, routing to the API helper
+        case LsproxyAction.LIST_FILES:
+            return runLsproxyApiCommand(ws, commandId, "/workspace/list-files", "GET");
+        case LsproxyAction.GET_DEFINITION:
+            return runLsproxyApiCommand(ws, commandId, "/symbol/find-definition", "POST", params.actionParams);
+        case LsproxyAction.GET_REFERENCES:
+            return runLsproxyApiCommand(ws, commandId, "/symbol/find-references", "POST", params.actionParams);
         case LsproxyAction.GET_DEFINITIONS_IN_FILE:
-            return runLsproxyApiCommand(ws, commandId, `/symbol/definitions-in-file?file_path=${encodeURIComponent(params.actionParams.filePath)}`);
-        // Example for a POST request
-        // case LsproxyAction.GET_DEFINITION:
-        //   return runLsproxyApiCommand(ws, commandId, "/symbol/find-definition", "POST", params.actionParams);
+            return runLsproxyApiCommand(ws, commandId, `/symbol/definitions-in-file?file_path=${encodeURIComponent(params.actionParams.path)}`, "GET");
         default:
-            coreExports.warning(`Unknown lsproxy action: ${params.action}`);
+            const unhandledAction = params.action;
+            coreExports.warning(`Unknown lsproxy action: ${unhandledAction}`);
             return sendResponse(ws, commandId, RunnerResponseStatus.ERROR, {
-                message: `Unknown lsproxy action: ${params.action}`,
+                message: `Unknown lsproxy action: ${unhandledAction}`,
             });
     }
 }

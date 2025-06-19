@@ -1,6 +1,6 @@
 import { exec, ChildProcess } from "child_process";
 import { WebSocket } from "ws";
-import { LsproxyAction, RunnerResponseStatus } from "./types.js";
+import { LsproxyAction, LsproxyMessageParams, RunnerResponseStatus } from "./types.js";
 import { sendResponse, sendLog } from "./utils.js";
 import * as core from "@actions/core";
 import { runningProcesses } from "./processes.js";
@@ -65,27 +65,48 @@ export function handleExecuteCommand(
 export function handleLsproxyCommand(
   ws: WebSocket,
   commandId: string,
-  params: { action: LsproxyAction; actionParams: any },
+  params: LsproxyMessageParams,
 ) {
   core.info(`[${commandId}] Received lsproxy command: ${params.action}`);
 
   switch (params.action) {
     case LsproxyAction.START:
       return startLsproxy(ws, commandId);
-    // Add other lsproxy actions here, routing to the API helper
+
+    case LsproxyAction.LIST_FILES:
+      return runLsproxyApiCommand(ws, commandId, "/workspace/list-files", "GET");
+
+    case LsproxyAction.GET_DEFINITION:
+      return runLsproxyApiCommand(
+        ws,
+        commandId,
+        "/symbol/find-definition",
+        "POST",
+        params.actionParams,
+      );
+
+    case LsproxyAction.GET_REFERENCES:
+      return runLsproxyApiCommand(
+        ws,
+        commandId,
+        "/symbol/find-references",
+        "POST",
+        params.actionParams,
+      );
+
     case LsproxyAction.GET_DEFINITIONS_IN_FILE:
       return runLsproxyApiCommand(
         ws,
         commandId,
-        `/symbol/definitions-in-file?file_path=${encodeURIComponent(params.actionParams.filePath)}`,
+        `/symbol/definitions-in-file?file_path=${encodeURIComponent(params.actionParams.path)}`,
+        "GET",
       );
-    // Example for a POST request
-    // case LsproxyAction.GET_DEFINITION:
-    //   return runLsproxyApiCommand(ws, commandId, "/symbol/find-definition", "POST", params.actionParams);
+
     default:
-      core.warning(`Unknown lsproxy action: ${params.action}`);
+      const unhandledAction = (params as any).action;
+      core.warning(`Unknown lsproxy action: ${unhandledAction}`);
       return sendResponse(ws, commandId, RunnerResponseStatus.ERROR, {
-        message: `Unknown lsproxy action: ${params.action}`,
+        message: `Unknown lsproxy action: ${unhandledAction}`,
       });
   }
 }

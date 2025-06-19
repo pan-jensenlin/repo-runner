@@ -14,4 +14,4 @@ inputs:
 
 runs:
   using: "docker"
-  image: "Dockerfile"
+  image: "docker://ghcr.io/Use-Tusk/repo-runner:latest"

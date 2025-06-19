@@ -6,8 +6,8 @@ set -e
 
 # About:
 #
-# This is a helper script to tag and push a new release. GitHub Actions use
-# release tags to allow users to select a specific version of the action to use.
+# This is a helper script to tag and push a new release. This script should be
+# run from a release branch (e.g. 'releases/v1') after merging changes from main.
 #
 # See: https://github.com/actions/typescript-action#publishing-a-new-release
 # See: https://github.com/actions/toolkit/blob/master/docs/action-versioning.md#recommendations
@@ -44,6 +44,34 @@ BOLD_PURPLE='\033[1;35m'
 BOLD_UNDERLINED='\033[1;4m'
 BOLD='\033[1m'
 
+# Pre-flight checks
+current_branch=$(git symbolic-ref --short HEAD)
+if [[ "$current_branch" == "main" ]]; then
+    echo -e "${BOLD_RED}You are on the 'main' branch. Releases should be done from a 'releases/vX' branch.${OFF}"
+    exit 1
+fi
+
+if [[ ! "$current_branch" =~ ^releases/v[0-9]+$ ]]; then
+    echo -e "${BOLD_RED}You are not on a release branch (e.g., 'releases/v1').${OFF}"
+    echo -e "Please switch to the appropriate release branch to continue."
+    exit 1
+fi
+
+echo -e "Fetching from remote to ensure everything is up to date..."
+git fetch origin
+
+# Check if origin/main is an ancestor of the current HEAD. If not, the branch is behind main.
+if ! git merge-base --is-ancestor origin/main HEAD; then
+    echo -e "${BOLD_RED}Your branch '$current_branch' is not up to date with 'origin/main'.${OFF}"
+    echo -e "Please merge the latest changes from 'main' before creating a release."
+    exit 1
+fi
+
+if ! git diff-index --quiet HEAD --; then
+    echo -e "${BOLD_RED}Your working directory is not clean. Please commit or stash your changes before releasing.${OFF}"
+    exit 1
+fi
+
 # 1. Retrieve the latest release tag
 if ! latest_tag=$(git describe --abbrev=0 --match="$semver_tag_glob"); then
 	# There are no existing release tags
@@ -68,12 +96,12 @@ else
 fi
 
 # 5. Remind user to update the version field in package.json
-echo -e -n "Make sure the version field in package.json is ${BOLD_BLUE}$new_tag${OFF}. Yes? [Y/${BOLD_UNDERLINED}n${OFF}] "
+echo -e -n "Have you updated the version in ${BOLD_BLUE}package.json${OFF} to ${BOLD_GREEN}$(echo "$new_tag" | sed 's/^v//')${OFF} and committed it? [Y/${BOLD_UNDERLINED}n${OFF}] "
 read -r YN
 
 if [[ ! ($YN == "y" || $YN == "Y") ]]; then
 	# Package.json version field is not up to date
-	echo -e "Please update the package.json version to ${BOLD_PURPLE}$new_tag${OFF} and commit your changes"
+	echo -e "Please update the package.json version to ${BOLD_PURPLE}$new_tag${OFF}, commit your changes, and run the script again."
 	exit 1
 fi
 

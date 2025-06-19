@@ -32351,11 +32351,13 @@ function handleTerminate(ws) {
     coreExports.info("🏁 Terminate command received. Killing all running processes and shutting down...");
     runningProcesses.forEach((proc, id) => {
         coreExports.info(`  - Killing process for command ${id}`);
-        proc.kill();
+        // Using SIGKILL to ensure termination, as lsproxy might be exiting gracefully
+        // with code 0 on SIGTERM, which can be ambiguous.
+        proc.kill("SIGKILL");
     });
     if (lsproxyProcess) {
         coreExports.info(`  - Killing lsproxy process`);
-        lsproxyProcess.kill();
+        lsproxyProcess.kill("SIGKILL");
     }
     ws.close(1000, "Work complete");
     // Allow time for the close frame to be sent before exiting.
@@ -32382,8 +32384,14 @@ function startLsproxy(ws, commandId) {
     runningProcesses.set("lsproxy_process", proc); // Track for termination
     proc.stdout?.on("data", (data) => sendLog(ws, commandId, "lsproxy-out", data.toString()));
     proc.stderr?.on("data", (data) => sendLog(ws, commandId, "lsproxy-err", data.toString()));
-    proc.on("exit", (code) => {
-        coreExports.error(`lsproxy process exited unexpectedly with code ${code}`);
+    proc.on("exit", (code, signal) => {
+        if (signal === "SIGTERM" || code === 0) {
+            // This is an expected termination, either by signal or clean exit.
+            coreExports.info(`lsproxy process exited. Code: ${code}, Signal: ${signal}`);
+        }
+        else {
+            coreExports.error(`lsproxy process exited unexpectedly with code ${code}`);
+        }
         lsproxyProcess = null;
         isLsproxyReady = false;
         runningProcesses.delete("lsproxy_process");

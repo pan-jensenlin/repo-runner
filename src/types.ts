@@ -1,3 +1,8 @@
+export enum TestingRunType {
+  SCHEDULED_RUN = "scheduled_run",
+  TESTING_COMMIT_CHECK_RUN = "testing_commit_check_run",
+}
+
 export enum BackendCommandType {
   EXECUTE_COMMAND = "execute_command",
   CANCEL_COMMAND = "cancel_command",

@@ -1,6 +1,6 @@
 import * as core from "@actions/core";
 import WebSocket from "ws";
-import { BackendCommandType, RunnerResponseStatus } from "./types.js";
+import { BackendCommandType, RunnerResponseStatus, TestingRunType } from "./types.js";
 import { runningProcesses } from "./processes.js";
 import {
   handleExecuteCommand,
@@ -13,10 +13,21 @@ import { sendResponse } from "./utils.js";
 async function run(): Promise<void> {
   try {
     const tuskUrl: string = core.getInput("tuskUrl", { required: true });
-    const runId: string = core.getInput("runId", { required: true });
 
     const url = new URL(tuskUrl);
-    const websocketUrl = `${url.protocol === "https:" ? "wss:" : "ws:"}//${url.host}/ws/sandbox`;
+    const queryParams = url.searchParams;
+    const runId = queryParams.get("runId");
+    const runType = queryParams.get("runType");
+
+    if (!runId || !runType) {
+      throw new Error("tuskUrl must contain runId and runType query parameters");
+    }
+
+    if (!Object.values(TestingRunType).includes(runType as TestingRunType)) {
+      throw new Error(`Invalid runType: ${runType}`);
+    }
+
+    const websocketUrl = url.toString().replace(/^http/, "ws");
 
     core.info(`Connecting to WebSocket: ${websocketUrl}`);
 
@@ -25,9 +36,7 @@ async function run(): Promise<void> {
     // --- WebSocket event handlers ---
 
     ws.on("open", () => {
-      core.info("✅ WebSocket connection established. Sending auth message...");
-      ws.send(JSON.stringify({ type: "auth", runId: runId }));
-      core.info("✅ Auth message sent. Awaiting instructions...");
+      core.info("✅ WebSocket connection established. Awaiting instructions...");
     });
 
     ws.on("message", async (data: WebSocket.Data) => {

@@ -32206,6 +32206,11 @@ function requireWebsocketServer () {
 
 requireWebsocketServer();
 
+var TestingRunType;
+(function (TestingRunType) {
+    TestingRunType["SCHEDULED_RUN"] = "scheduled_run";
+    TestingRunType["TESTING_COMMIT_CHECK_RUN"] = "testing_commit_check_run";
+})(TestingRunType || (TestingRunType = {}));
 var BackendCommandType;
 (function (BackendCommandType) {
     BackendCommandType["EXECUTE_COMMAND"] = "execute_command";
@@ -32464,16 +32469,22 @@ function runLsproxyApiCommand(ws, commandId, endpoint, method = "GET", body = nu
 async function run() {
     try {
         const tuskUrl = coreExports.getInput("tuskUrl", { required: true });
-        const runId = coreExports.getInput("runId", { required: true });
         const url = new URL(tuskUrl);
-        const websocketUrl = `${url.protocol === "https:" ? "wss:" : "ws:"}//${url.host}/ws/sandbox`;
+        const queryParams = url.searchParams;
+        const runId = queryParams.get("runId");
+        const runType = queryParams.get("runType");
+        if (!runId || !runType) {
+            throw new Error("tuskUrl must contain runId and runType query parameters");
+        }
+        if (!Object.values(TestingRunType).includes(runType)) {
+            throw new Error(`Invalid runType: ${runType}`);
+        }
+        const websocketUrl = url.toString().replace(/^http/, "ws");
         coreExports.info(`Connecting to WebSocket: ${websocketUrl}`);
         const ws = new WebSocket(websocketUrl);
         // --- WebSocket event handlers ---
         ws.on("open", () => {
-            coreExports.info("✅ WebSocket connection established. Sending auth message...");
-            ws.send(JSON.stringify({ type: "auth", runId: runId }));
-            coreExports.info("✅ Auth message sent. Awaiting instructions...");
+            coreExports.info("✅ WebSocket connection established. Awaiting instructions...");
         });
         ws.on("message", async (data) => {
             try {

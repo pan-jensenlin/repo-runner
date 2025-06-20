@@ -9,8 +9,6 @@ branding:
 inputs:
   tuskUrl:
     description: The URL of the Tusk instance to connect to
-  runId:
-    description: Tusk run ID
 
 runs:
   using: "docker"

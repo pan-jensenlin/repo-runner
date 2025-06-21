@@ -15,7 +15,7 @@ export function handleExecuteCommand(
 
   const proc = exec(params.command, {
     shell: "/bin/bash",
-    maxBuffer: 10 * 1024 * 1024 /* 10MB */,
+    maxBuffer: 10 * 1024 * 1024, // 10MB,
   });
   runningProcesses.set(commandId, proc);
 
@@ -67,6 +67,8 @@ export function handleLsproxyCommand(
   core.info(`[${commandId}] Received lsproxy command: ${params.action}`);
 
   switch (params.action) {
+    // Note: lsproxy is started automatically when the runner is up (see `index.ts`)
+    // but we keep this handler for manual restarts in case the lsproxy process is killed.
     case LsproxyAction.START:
       core.info(`[${commandId}] Received request to start lsproxy.`);
       startLsproxy()
@@ -109,6 +111,15 @@ export function handleLsproxyCommand(
         commandId,
         `/symbol/definitions-in-file?file_path=${encodeURIComponent(params.actionParams.path)}`,
         "GET",
+      );
+
+    case LsproxyAction.READ_SOURCE_CODE:
+      return runLsproxyApiCommand(
+        ws,
+        commandId,
+        "/workspace/read-source-code",
+        "POST",
+        params.actionParams,
       );
 
     default:
@@ -163,8 +174,6 @@ export function handleTerminate(ws: WebSocket) {
     process.exit(0);
   }, 1000);
 }
-
-// --- Internal Helper Functions ---
 
 function runLsproxyApiCommand(
   ws: WebSocket,

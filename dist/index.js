@@ -32225,6 +32225,7 @@ var LsproxyAction;
     LsproxyAction["GET_DEFINITION"] = "get-definition";
     LsproxyAction["GET_REFERENCES"] = "get-references";
     LsproxyAction["GET_DEFINITIONS_IN_FILE"] = "get-definitions-in-file";
+    LsproxyAction["READ_SOURCE_CODE"] = "read-source-code";
 })(LsproxyAction || (LsproxyAction = {}));
 var RunnerMessageType;
 (function (RunnerMessageType) {
@@ -32325,7 +32326,7 @@ function handleExecuteCommand(ws, commandId, params) {
     coreExports.info(`[${commandId}] Executing: ${params.command}`);
     const proc = exec$1(params.command, {
         shell: "/bin/bash",
-        maxBuffer: 10 * 1024 * 1024 /* 10MB */,
+        maxBuffer: 10 * 1024 * 1024, // 10MB,
     });
     runningProcesses.set(commandId, proc);
     let stdout = "";
@@ -32365,6 +32366,8 @@ function handleExecuteCommand(ws, commandId, params) {
 function handleLsproxyCommand(ws, commandId, params) {
     coreExports.info(`[${commandId}] Received lsproxy command: ${params.action}`);
     switch (params.action) {
+        // Note: lsproxy is started automatically when the runner is up (see `index.ts`)
+        // but we keep this handler for manual restarts in case the lsproxy process is killed.
         case LsproxyAction.START:
             coreExports.info(`[${commandId}] Received request to start lsproxy.`);
             startLsproxy()
@@ -32387,6 +32390,8 @@ function handleLsproxyCommand(ws, commandId, params) {
             return runLsproxyApiCommand(ws, commandId, "/symbol/find-references", "POST", params.actionParams);
         case LsproxyAction.GET_DEFINITIONS_IN_FILE:
             return runLsproxyApiCommand(ws, commandId, `/symbol/definitions-in-file?file_path=${encodeURIComponent(params.actionParams.path)}`, "GET");
+        case LsproxyAction.READ_SOURCE_CODE:
+            return runLsproxyApiCommand(ws, commandId, "/workspace/read-source-code", "POST", params.actionParams);
         default:
             const unhandledAction = params.action;
             coreExports.warning(`Unknown lsproxy action: ${unhandledAction}`);
@@ -32432,7 +32437,6 @@ function handleTerminate(ws) {
         process.exit(0);
     }, 1000);
 }
-// --- Internal Helper Functions ---
 function runLsproxyApiCommand(ws, commandId, endpoint, method = "GET", body = null) {
     if (!getIsLsproxyReady()) {
         sendResponse(ws, commandId, RunnerResponseStatus.ERROR, {

@@ -16,6 +16,7 @@ export enum LsproxyAction {
   GET_DEFINITION = "get-definition",
   GET_REFERENCES = "get-references",
   GET_DEFINITIONS_IN_FILE = "get-definitions-in-file",
+  READ_SOURCE_CODE = "read-source-code",
 }
 
 export enum RunnerMessageType {
@@ -29,6 +30,16 @@ export enum RunnerResponseStatus {
 }
 
 export type LogStreamType = "stdout" | "stderr" | "lsproxy-out" | "lsproxy-err";
+
+export interface Range {
+  start: Position;
+  end: Position;
+}
+
+export interface FileRange {
+  path: string;
+  range: Range;
+}
 
 export interface Position {
   line: number;
@@ -51,7 +62,7 @@ export interface GetDefinitionsInFileParams {
   path: string;
 }
 
-// --- Discriminated union for Lsproxy messages from backend ---
+export interface ReadSourceCodeParams extends FileRange {}
 
 export type LsproxyMessageParams =
   | { action: LsproxyAction.START; actionParams?: never }
@@ -61,4 +72,5 @@ export type LsproxyMessageParams =
   | {
       action: LsproxyAction.GET_DEFINITIONS_IN_FILE;
       actionParams: GetDefinitionsInFileParams;
-    };
+    }
+  | { action: LsproxyAction.READ_SOURCE_CODE; actionParams: ReadSourceCodeParams };

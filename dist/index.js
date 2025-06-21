@@ -32489,23 +32489,23 @@ async function run() {
         ws.on("message", async (data) => {
             try {
                 const message = JSON.parse(data.toString());
-                coreExports.info(`⬇️ Received command: ${message.command} (ID: ${message.id})`);
+                coreExports.info(`⬇️ Received command: ${message.command} (ID: ${message.commandId})`);
                 switch (message.command) {
                     case BackendCommandType.EXECUTE_COMMAND:
-                        handleExecuteCommand(ws, message.id, message.params);
+                        handleExecuteCommand(ws, message.commandId, message.params);
                         break;
                     case BackendCommandType.LSPROXY_COMMAND:
-                        handleLsproxyCommand(ws, message.id, message.params);
+                        handleLsproxyCommand(ws, message.commandId, message.params);
                         break;
                     case BackendCommandType.CANCEL_COMMAND:
-                        handleCancelCommand(ws, message.id, message.params);
+                        handleCancelCommand(ws, message.commandId, message.params);
                         break;
                     case BackendCommandType.TERMINATE:
                         handleTerminate(ws);
                         break;
                     default:
                         coreExports.warning(`Unknown command received: ${message.command}`);
-                        sendResponse(ws, message.id, RunnerResponseStatus.ERROR, {
+                        sendResponse(ws, message.commandId, RunnerResponseStatus.ERROR, {
                             message: `Unknown command: ${message.command}`,
                         });
                 }

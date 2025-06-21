@@ -9,6 +9,7 @@ import {
   handleTerminate,
 } from "./handlers.js";
 import { sendResponse } from "./utils.js";
+import { startLsproxy } from "./lsproxy.js";
 
 async function run(): Promise<void> {
   try {
@@ -26,6 +27,10 @@ async function run(): Promise<void> {
     if (!Object.values(TestingRunType).includes(runType as TestingRunType)) {
       throw new Error(`Invalid runType: ${runType}`);
     }
+
+    core.info("Starting lsproxy...");
+    await startLsproxy();
+    core.info("lsproxy started successfully.");
 
     const websocketUrl = url.toString().replace(/^http/, "ws");
 

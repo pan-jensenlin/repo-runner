@@ -42,25 +42,24 @@ async function run(): Promise<void> {
     ws.on("message", async (data: WebSocket.Data) => {
       try {
         const message = JSON.parse(data.toString());
-        core.info(`⬇️ Received command: ${message.command} (ID: ${message.commandId})`);
+        core.info(`⬇️ Received command: ${message.command} (ID: ${message.id})`);
 
         switch (message.command) {
           case BackendCommandType.EXECUTE_COMMAND:
-            handleExecuteCommand(ws, message.commandId, message.params);
+            handleExecuteCommand(ws, message.id, message.params);
             break;
           case BackendCommandType.LSPROXY_COMMAND:
-            // Placeholder for lsproxy logic
-            handleLsproxyCommand(ws, message.commandId, message.params);
+            handleLsproxyCommand(ws, message.id, message.params);
             break;
           case BackendCommandType.CANCEL_COMMAND:
-            handleCancelCommand(ws, message.commandId, message.params);
+            handleCancelCommand(ws, message.id, message.params);
             break;
           case BackendCommandType.TERMINATE:
             handleTerminate(ws);
             break;
           default:
             core.warning(`Unknown command received: ${message.command}`);
-            sendResponse(ws, message.commandId, RunnerResponseStatus.ERROR, {
+            sendResponse(ws, message.id, RunnerResponseStatus.ERROR, {
               message: `Unknown command: ${message.command}`,
             });
         }

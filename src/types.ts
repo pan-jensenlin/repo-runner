@@ -51,11 +51,16 @@ export interface FilePosition {
   position: Position;
 }
 
-export interface GetDefinitionParams extends FilePosition {}
+export interface GetDefinitionParams {
+  position: FilePosition;
+  include_source_code?: boolean;
+  include_raw_response?: number;
+}
 
 export interface GetReferencesParams {
   identifier_position: FilePosition;
   include_code_context_lines?: number;
+  include_raw_response?: boolean;
 }
 
 export interface GetDefinitionsInFileParams {

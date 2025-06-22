@@ -32322,7 +32322,7 @@ function startLsproxy() {
     return startupPromise;
 }
 
-function handleExecuteCommand(ws, commandId, params) {
+function handleExecuteCommand({ ws, commandId, params, }) {
     coreExports.info(`[${commandId}] Executing: ${params.command}`);
     const proc = exec$1(params.command, {
         shell: "/bin/bash",
@@ -32363,7 +32363,7 @@ function handleExecuteCommand(ws, commandId, params) {
         });
     });
 }
-function handleLsproxyCommand(ws, commandId, params) {
+function handleLsproxyCommand({ ws, commandId, params, }) {
     coreExports.info(`[${commandId}] Received lsproxy command: ${params.action}`);
     switch (params.action) {
         // Note: lsproxy is started automatically when the runner is up (see `index.ts`)
@@ -32383,15 +32383,43 @@ function handleLsproxyCommand(ws, commandId, params) {
             });
             return;
         case LsproxyAction.LIST_FILES:
-            return runLsproxyApiCommand(ws, commandId, "/workspace/list-files", "GET");
+            return runLsproxyApiCommand({
+                ws,
+                commandId,
+                endpoint: "/workspace/list-files",
+                method: "GET",
+            });
         case LsproxyAction.GET_DEFINITION:
-            return runLsproxyApiCommand(ws, commandId, "/symbol/find-definition", "POST", params.actionParams);
+            return runLsproxyApiCommand({
+                ws,
+                commandId,
+                endpoint: "/symbol/find-definition",
+                method: "POST",
+                body: params.actionParams,
+            });
         case LsproxyAction.GET_REFERENCES:
-            return runLsproxyApiCommand(ws, commandId, "/symbol/find-references", "POST", params.actionParams);
+            return runLsproxyApiCommand({
+                ws,
+                commandId,
+                endpoint: "/symbol/find-references",
+                method: "POST",
+                body: params.actionParams,
+            });
         case LsproxyAction.GET_DEFINITIONS_IN_FILE:
-            return runLsproxyApiCommand(ws, commandId, `/symbol/definitions-in-file?file_path=${encodeURIComponent(params.actionParams.path)}`, "GET");
+            return runLsproxyApiCommand({
+                ws,
+                commandId,
+                endpoint: `/symbol/definitions-in-file?file_path=${encodeURIComponent(params.actionParams.path)}`,
+                method: "GET",
+            });
         case LsproxyAction.READ_SOURCE_CODE:
-            return runLsproxyApiCommand(ws, commandId, "/workspace/read-source-code", "POST", params.actionParams);
+            return runLsproxyApiCommand({
+                ws,
+                commandId,
+                endpoint: "/workspace/read-source-code",
+                method: "POST",
+                body: params.actionParams,
+            });
         default:
             const unhandledAction = params.action;
             coreExports.warning(`Unknown lsproxy action: ${unhandledAction}`);
@@ -32400,7 +32428,7 @@ function handleLsproxyCommand(ws, commandId, params) {
             });
     }
 }
-function handleCancelCommand(ws, commandId, params) {
+function handleCancelCommand({ ws, commandId, params, }) {
     const { commandIdToCancel } = params;
     const proc = runningProcesses.get(commandIdToCancel);
     if (proc) {
@@ -32418,8 +32446,9 @@ function handleCancelCommand(ws, commandId, params) {
         });
     }
 }
-function handleTerminate(ws) {
+function handleTerminate({ ws, commandId }) {
     coreExports.info("🏁 Terminate command received. Killing all running processes and shutting down...");
+    sendResponse(ws, commandId, RunnerResponseStatus.SUCCESS, { ok: true });
     runningProcesses.forEach((proc, id) => {
         coreExports.info(`  - Killing process for command ${id}`);
         // Using SIGKILL to ensure termination, as lsproxy might be exiting gracefully
@@ -32437,7 +32466,7 @@ function handleTerminate(ws) {
         process.exit(0);
     }, 1000);
 }
-function runLsproxyApiCommand(ws, commandId, endpoint, method = "GET", body = null) {
+function runLsproxyApiCommand({ ws, commandId, endpoint, method = "GET", body, }) {
     if (!getIsLsproxyReady()) {
         coreExports.error(`[${commandId}] lsproxy is not ready for endpoint: ${endpoint}`);
         sendResponse(ws, commandId, RunnerResponseStatus.ERROR, {
@@ -32529,16 +32558,16 @@ async function run() {
                 coreExports.info(`⬇️ Received command: ${message.command} (ID: ${message.commandId})`);
                 switch (message.command) {
                     case BackendCommandType.EXECUTE_COMMAND:
-                        handleExecuteCommand(ws, message.commandId, message.params);
+                        handleExecuteCommand({ ws, commandId: message.commandId, params: message.params });
                         break;
                     case BackendCommandType.LSPROXY_COMMAND:
-                        handleLsproxyCommand(ws, message.commandId, message.params);
+                        handleLsproxyCommand({ ws, commandId: message.commandId, params: message.params });
                         break;
                     case BackendCommandType.CANCEL_COMMAND:
-                        handleCancelCommand(ws, message.commandId, message.params);
+                        handleCancelCommand({ ws, commandId: message.commandId, params: message.params });
                         break;
                     case BackendCommandType.TERMINATE:
-                        handleTerminate(ws);
+                        handleTerminate({ ws, commandId: message.commandId });
                         break;
                     default:
                         coreExports.warning(`Unknown command received: ${message.command}`);

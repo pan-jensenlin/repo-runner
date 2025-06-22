@@ -51,16 +51,16 @@ async function run(): Promise<void> {
 
         switch (message.command) {
           case BackendCommandType.EXECUTE_COMMAND:
-            handleExecuteCommand(ws, message.commandId, message.params);
+            handleExecuteCommand({ ws, commandId: message.commandId, params: message.params });
             break;
           case BackendCommandType.LSPROXY_COMMAND:
-            handleLsproxyCommand(ws, message.commandId, message.params);
+            handleLsproxyCommand({ ws, commandId: message.commandId, params: message.params });
             break;
           case BackendCommandType.CANCEL_COMMAND:
-            handleCancelCommand(ws, message.commandId, message.params);
+            handleCancelCommand({ ws, commandId: message.commandId, params: message.params });
             break;
           case BackendCommandType.TERMINATE:
-            handleTerminate(ws);
+            handleTerminate({ ws, commandId: message.commandId });
             break;
           default:
             core.warning(`Unknown command received: ${message.command}`);

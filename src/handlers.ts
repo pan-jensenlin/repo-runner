@@ -6,11 +6,15 @@ import * as core from "@actions/core";
 import { runningProcesses } from "./processes.js";
 import { startLsproxy, getIsLsproxyReady, getLsproxyProcess } from "./lsproxy.js";
 
-export function handleExecuteCommand(
-  ws: WebSocket,
-  commandId: string,
-  params: { command: string },
-) {
+export function handleExecuteCommand({
+  ws,
+  commandId,
+  params,
+}: {
+  ws: WebSocket;
+  commandId: string;
+  params: { command: string };
+}) {
   core.info(`[${commandId}] Executing: ${params.command}`);
 
   const proc = exec(params.command, {
@@ -59,11 +63,15 @@ export function handleExecuteCommand(
   });
 }
 
-export function handleLsproxyCommand(
-  ws: WebSocket,
-  commandId: string,
-  params: LsproxyMessageParams,
-) {
+export function handleLsproxyCommand({
+  ws,
+  commandId,
+  params,
+}: {
+  ws: WebSocket;
+  commandId: string;
+  params: LsproxyMessageParams;
+}) {
   core.info(`[${commandId}] Received lsproxy command: ${params.action}`);
 
   switch (params.action) {
@@ -85,42 +93,47 @@ export function handleLsproxyCommand(
       return;
 
     case LsproxyAction.LIST_FILES:
-      return runLsproxyApiCommand(ws, commandId, "/workspace/list-files", "GET");
+      return runLsproxyApiCommand({
+        ws,
+        commandId,
+        endpoint: "/workspace/list-files",
+        method: "GET",
+      });
 
     case LsproxyAction.GET_DEFINITION:
-      return runLsproxyApiCommand(
+      return runLsproxyApiCommand({
         ws,
         commandId,
-        "/symbol/find-definition",
-        "POST",
-        params.actionParams,
-      );
+        endpoint: "/symbol/find-definition",
+        method: "POST",
+        body: params.actionParams,
+      });
 
     case LsproxyAction.GET_REFERENCES:
-      return runLsproxyApiCommand(
+      return runLsproxyApiCommand({
         ws,
         commandId,
-        "/symbol/find-references",
-        "POST",
-        params.actionParams,
-      );
+        endpoint: "/symbol/find-references",
+        method: "POST",
+        body: params.actionParams,
+      });
 
     case LsproxyAction.GET_DEFINITIONS_IN_FILE:
-      return runLsproxyApiCommand(
+      return runLsproxyApiCommand({
         ws,
         commandId,
-        `/symbol/definitions-in-file?file_path=${encodeURIComponent(params.actionParams.path)}`,
-        "GET",
-      );
+        endpoint: `/symbol/definitions-in-file?file_path=${encodeURIComponent(params.actionParams.path)}`,
+        method: "GET",
+      });
 
     case LsproxyAction.READ_SOURCE_CODE:
-      return runLsproxyApiCommand(
+      return runLsproxyApiCommand({
         ws,
         commandId,
-        "/workspace/read-source-code",
-        "POST",
-        params.actionParams,
-      );
+        endpoint: "/workspace/read-source-code",
+        method: "POST",
+        body: params.actionParams,
+      });
 
     default:
       const unhandledAction = (params as any).action;
@@ -131,11 +144,15 @@ export function handleLsproxyCommand(
   }
 }
 
-export function handleCancelCommand(
-  ws: WebSocket,
-  commandId: string,
-  params: { commandIdToCancel: string },
-) {
+export function handleCancelCommand({
+  ws,
+  commandId,
+  params,
+}: {
+  ws: WebSocket;
+  commandId: string;
+  params: { commandIdToCancel: string };
+}) {
   const { commandIdToCancel } = params;
   const proc = runningProcesses.get(commandIdToCancel);
 
@@ -154,8 +171,10 @@ export function handleCancelCommand(
   }
 }
 
-export function handleTerminate(ws: WebSocket) {
+export function handleTerminate({ ws, commandId }: { ws: WebSocket; commandId: string }) {
   core.info("🏁 Terminate command received. Killing all running processes and shutting down...");
+  sendResponse(ws, commandId, RunnerResponseStatus.SUCCESS, { ok: true });
+
   runningProcesses.forEach((proc, id) => {
     core.info(`  - Killing process for command ${id}`);
     // Using SIGKILL to ensure termination, as lsproxy might be exiting gracefully
@@ -175,13 +194,19 @@ export function handleTerminate(ws: WebSocket) {
   }, 1000);
 }
 
-function runLsproxyApiCommand(
-  ws: WebSocket,
-  commandId: string,
-  endpoint: string,
+function runLsproxyApiCommand({
+  ws,
+  commandId,
+  endpoint,
   method = "GET",
-  body: object | null = null,
-) {
+  body,
+}: {
+  ws: WebSocket;
+  commandId: string;
+  endpoint: string;
+  method?: string;
+  body?: object;
+}) {
   if (!getIsLsproxyReady()) {
     core.error(`[${commandId}] lsproxy is not ready for endpoint: ${endpoint}`);
     sendResponse(ws, commandId, RunnerResponseStatus.ERROR, {

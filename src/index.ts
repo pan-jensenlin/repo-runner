@@ -11,8 +11,28 @@ import {
 import { sendResponse } from "./utils.js";
 import { startLsproxy } from "./lsproxy.js";
 
+const RUNNER_TIMEOUT_MS = 1 * 60 * 60 * 1000; // 1 hour
+
+function forceShutdown(reason: string) {
+  core.setFailed(reason);
+
+  runningProcesses.forEach((proc, id) => {
+    core.info(`  - Killing process for command ${id}`);
+    proc.kill("SIGKILL");
+  });
+
+  process.exit(1);
+}
+
+let runnerTimeout: NodeJS.Timeout;
+
 async function run(): Promise<void> {
   try {
+    runnerTimeout = setTimeout(
+      () => forceShutdown(`Runner timed out after ${RUNNER_TIMEOUT_MS / 1000}s.`),
+      RUNNER_TIMEOUT_MS,
+    );
+
     const tuskUrl: string = core.getInput("tuskUrl", { required: true });
 
     const url = new URL(tuskUrl);
@@ -60,6 +80,7 @@ async function run(): Promise<void> {
             handleCancelCommand({ ws, commandId: message.commandId, params: message.params });
             break;
           case BackendCommandType.TERMINATE:
+            clearTimeout(runnerTimeout);
             handleTerminate({ ws, commandId: message.commandId });
             break;
           default:
@@ -78,6 +99,7 @@ async function run(): Promise<void> {
 
     ws.on("close", (code, reason) => {
       core.info(`🔌 WebSocket connection closed. Code: ${code}, Reason: ${reason.toString()}`);
+      clearTimeout(runnerTimeout);
       // Clean up any lingering processes on close
       runningProcesses.forEach((proc) => proc.kill());
       if (code !== 1000) {

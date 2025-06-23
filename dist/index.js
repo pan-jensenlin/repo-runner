@@ -32240,6 +32240,17 @@ var RunnerResponseStatus;
 
 const runningProcesses = new Map();
 
+// Send GitHub runner context to the server for every request
+// Full list: https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/store-information-in-variables#default-environment-variables
+const runnerMetadata = {
+    githubRepo: process.env.GITHUB_REPOSITORY,
+    githubRef: process.env.GITHUB_REF,
+    githubRunId: process.env.GITHUB_RUN_ID, // Workflow run ID. This number does not change if you re-run the workflow run.
+    githubSha: process.env.GITHUB_SHA, // Last commit on the GITHUB_REF (branch or tag that received dispatch)
+    githubTriggeringActor: process.env.GITHUB_TRIGGERING_ACTOR,
+    githubRunAttempt: process.env.GITHUB_RUN_ATTEMPT,
+    githubWorkflowRef: process.env.GITHUB_WORKFLOW_REF,
+};
 function sendResponse(ws, originalCommandId, status, payload) {
     if (ws.readyState !== WebSocket.OPEN) {
         coreExports.warning(`WebSocket not open. Cannot send response for ${originalCommandId}`);
@@ -32250,6 +32261,7 @@ function sendResponse(ws, originalCommandId, status, payload) {
         originalCommandId,
         status,
         payload,
+        runnerMetadata,
     };
     coreExports.info(`⬆️ Sending response for ${originalCommandId} with status ${status}`);
     ws.send(JSON.stringify(message));
@@ -32529,8 +32541,19 @@ function runLsproxyApiCommand({ ws, commandId, endpoint, method = "GET", body, }
     });
 }
 
+const RUNNER_TIMEOUT_MS = 1 * 60 * 60 * 1000; // 1 hour
+function forceShutdown(reason) {
+    coreExports.setFailed(reason);
+    runningProcesses.forEach((proc, id) => {
+        coreExports.info(`  - Killing process for command ${id}`);
+        proc.kill("SIGKILL");
+    });
+    process.exit(1);
+}
+let runnerTimeout;
 async function run() {
     try {
+        runnerTimeout = setTimeout(() => forceShutdown(`Runner timed out after ${RUNNER_TIMEOUT_MS / 1000}s.`), RUNNER_TIMEOUT_MS);
         const tuskUrl = coreExports.getInput("tuskUrl", { required: true });
         const url = new URL(tuskUrl);
         const queryParams = url.searchParams;
@@ -32567,6 +32590,7 @@ async function run() {
                         handleCancelCommand({ ws, commandId: message.commandId, params: message.params });
                         break;
                     case BackendCommandType.TERMINATE:
+                        clearTimeout(runnerTimeout);
                         handleTerminate({ ws, commandId: message.commandId });
                         break;
                     default:
@@ -32585,6 +32609,7 @@ async function run() {
         });
         ws.on("close", (code, reason) => {
             coreExports.info(`🔌 WebSocket connection closed. Code: ${code}, Reason: ${reason.toString()}`);
+            clearTimeout(runnerTimeout);
             // Clean up any lingering processes on close
             runningProcesses.forEach((proc) => proc.kill());
             if (code !== 1000) {

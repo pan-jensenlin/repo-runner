@@ -2,7 +2,8 @@ import require$$0 from 'os';
 import require$$0$1 from 'crypto';
 import require$$1 from 'fs';
 import require$$1$5 from 'path';
-import require$$2 from 'http';
+import * as require$$2 from 'http';
+import require$$2__default from 'http';
 import require$$1$1 from 'https';
 import require$$0$5 from 'net';
 import require$$4 from 'tls';
@@ -25,7 +26,7 @@ import require$$1$4 from 'url';
 import require$$3 from 'zlib';
 import require$$6 from 'string_decoder';
 import require$$0$a from 'diagnostics_channel';
-import require$$2$2, { exec as exec$1 } from 'child_process';
+import require$$2$2, { exec as exec$1, spawn } from 'child_process';
 import require$$6$1 from 'timers';
 
 var commonjsGlobal = typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : {};
@@ -377,7 +378,7 @@ function requireTunnel$1 () {
 	if (hasRequiredTunnel$1) return tunnel$1;
 	hasRequiredTunnel$1 = 1;
 	var tls = require$$4;
-	var http = require$$2;
+	var http = require$$2__default;
 	var https = require$$1$1;
 	var events = require$$0$3;
 	var util = require$$0$2;
@@ -1096,7 +1097,7 @@ function requireUtil$6 () {
 
 	const assert = require$$0$4;
 	const { kDestroyed, kBodyUsed } = requireSymbols$4();
-	const { IncomingMessage } = require$$2;
+	const { IncomingMessage } = require$$2__default;
 	const stream = require$$0$6;
 	const net = require$$0$5;
 	const { InvalidArgumentError } = requireErrors();
@@ -8770,7 +8771,7 @@ function requireClient () {
 
 	const assert = require$$0$4;
 	const net = require$$0$5;
-	const http = require$$2;
+	const http = require$$2__default;
 	const { pipeline } = require$$0$6;
 	const util = requireUtil$6();
 	const timers = requireTimers();
@@ -13375,7 +13376,7 @@ function requireMockUtils () {
 	  kGetNetConnect
 	} = requireMockSymbols();
 	const { buildURL, nop } = requireUtil$6();
-	const { STATUS_CODES } = require$$2;
+	const { STATUS_CODES } = require$$2__default;
 	const {
 	  types: {
 	    isPromise
@@ -17147,7 +17148,7 @@ function requireFetch () {
 	const { TransformStream } = require$$14;
 	const { getGlobalDispatcher } = requireGlobal();
 	const { webidl } = requireWebidl();
-	const { STATUS_CODES } = require$$2;
+	const { STATUS_CODES } = require$$2__default;
 	const GET_OR_HEAD = ['GET', 'HEAD'];
 
 	/** @type {import('buffer').resolveObjectURL} */
@@ -24391,7 +24392,7 @@ function requireLib () {
 	};
 	Object.defineProperty(lib, "__esModule", { value: true });
 	lib.HttpClient = lib.isHttps = lib.HttpClientResponse = lib.HttpClientError = lib.getProxyUrl = lib.MediaTypes = lib.Headers = lib.HttpCodes = void 0;
-	const http = __importStar(require$$2);
+	const http = __importStar(require$$2__default);
 	const https = __importStar(require$$1$1);
 	const pm = __importStar(requireProxy());
 	const tunnel = __importStar(requireTunnel());
@@ -30022,7 +30023,7 @@ function requireWebsocket () {
 
 	const EventEmitter = require$$0$3;
 	const https = require$$1$1;
-	const http = require$$2;
+	const http = require$$2__default;
 	const net = require$$0$5;
 	const tls = require$$4;
 	const { randomBytes, createHash } = require$$0$1;
@@ -31666,7 +31667,7 @@ function requireWebsocketServer () {
 	hasRequiredWebsocketServer = 1;
 
 	const EventEmitter = require$$0$3;
-	const http = require$$2;
+	const http = require$$2__default;
 	const { Duplex } = require$$0$6;
 	const { createHash } = require$$0$1;
 
@@ -32263,7 +32264,7 @@ function sendResponse(ws, originalCommandId, status, payload) {
         payload,
         runnerMetadata,
     };
-    coreExports.info(`⬆️ Sending response for ${originalCommandId} with status ${status}`);
+    coreExports.info(`[${new Date().toISOString()}] ⬆️ Sending response for ${originalCommandId} with status ${status}`);
     ws.send(JSON.stringify(message));
 }
 
@@ -32335,11 +32336,10 @@ function startLsproxy() {
 }
 
 function handleExecuteCommand({ ws, commandId, params, }) {
-    coreExports.info(`[${commandId}] Executing: ${params.command}`);
-    const proc = exec$1(params.command, {
-        shell: "/bin/bash",
-        maxBuffer: 10 * 1024 * 1024, // 10MB,
-    });
+    const startTime = new Date();
+    coreExports.info(`[${startTime.toISOString()}] [${commandId}] Executing: ${params.command}`);
+    const [command, ...args] = params.command.split(" ");
+    const proc = spawn(command, args, {});
     runningProcesses.set(commandId, proc);
     let stdout = "";
     let stderr = "";
@@ -32355,7 +32355,9 @@ function handleExecuteCommand({ ws, commandId, params, }) {
         stderr += message;
     });
     proc.on("exit", (code) => {
-        coreExports.info(`[${commandId}] Finished with exit code: ${code}`);
+        const endTime = new Date();
+        const durationMs = Math.round(endTime.getTime() - startTime.getTime());
+        coreExports.info(`[${endTime.toISOString()}] [${commandId}] Finished with exit code: ${code} (duration: ${durationMs}ms)`);
         runningProcesses.delete(commandId);
         const payload = {
             exitCode: code,
@@ -32366,7 +32368,7 @@ function handleExecuteCommand({ ws, commandId, params, }) {
         sendResponse(ws, commandId, status, payload);
     });
     proc.on("error", (err) => {
-        coreExports.error(`[${commandId}] Failed to start command: ${err.message}`);
+        coreExports.error(`[${new Date().toISOString()}] [${commandId}] Failed to start command: ${err.message}`);
         runningProcesses.delete(commandId);
         sendResponse(ws, commandId, RunnerResponseStatus.ERROR, {
             message: `Failed to execute command: ${err.message}`,
@@ -32376,7 +32378,7 @@ function handleExecuteCommand({ ws, commandId, params, }) {
     });
 }
 function handleLsproxyCommand({ ws, commandId, params, }) {
-    coreExports.info(`[${commandId}] Received lsproxy command: ${params.action}`);
+    coreExports.info(`[${new Date().toISOString()}][${commandId}] Received lsproxy command: ${params.action}`);
     switch (params.action) {
         // Note: lsproxy is started automatically when the runner is up (see `index.ts`)
         // but we keep this handler for manual restarts in case the lsproxy process is killed.
@@ -32434,7 +32436,7 @@ function handleLsproxyCommand({ ws, commandId, params, }) {
             });
         default:
             const unhandledAction = params.action;
-            coreExports.warning(`Unknown lsproxy action: ${unhandledAction}`);
+            coreExports.warning(`[${new Date().toISOString()}][${commandId}] Unknown lsproxy action: ${unhandledAction}`);
             return sendResponse(ws, commandId, RunnerResponseStatus.ERROR, {
                 message: `Unknown lsproxy action: ${unhandledAction}`,
             });
@@ -32479,66 +32481,67 @@ function handleTerminate({ ws, commandId }) {
     }, 1000);
 }
 function runLsproxyApiCommand({ ws, commandId, endpoint, method = "GET", body, }) {
+    const startTime = new Date();
     if (!getIsLsproxyReady()) {
-        coreExports.error(`[${commandId}] lsproxy is not ready for endpoint: ${endpoint}`);
+        coreExports.error(`[${startTime.toISOString()}][${commandId}] lsproxy is not ready for endpoint: ${endpoint}`);
         sendResponse(ws, commandId, RunnerResponseStatus.ERROR, {
             message: "lsproxy is not ready.",
         });
         return;
     }
-    const RESPONSE_DELIMITER = "___HTTP_STATUS___";
-    const bodyData = body ? `--data '${JSON.stringify(body)}'` : "";
-    const headers = "--header 'Content-Type: application/json'";
-    const curlCmd = `curl -s -w "${RESPONSE_DELIMITER}%{http_code}" -X ${method} http://localhost:4444/v1${endpoint} ${headers} ${bodyData}`;
-    coreExports.info(`[${commandId}] Running lsproxy command: ${curlCmd}`);
-    const proc = exec$1(curlCmd, { shell: "/bin/bash" });
-    let stdout = "";
-    let stderr = "";
-    proc.stdout?.on("data", (data) => (stdout += data));
-    proc.stderr?.on("data", (data) => (stderr += data));
-    proc.on("exit", (code) => {
-        if (code !== 0) {
-            const errorMessage = `Lsproxy API command failed. curl exit code: ${code}`;
-            coreExports.error(`[${commandId}] ${errorMessage}\nStderr: ${stderr}`);
-            return sendResponse(ws, commandId, RunnerResponseStatus.ERROR, {
-                message: errorMessage,
-                stderr: stderr,
-            });
-        }
-        const parts = stdout.split(RESPONSE_DELIMITER);
-        if (parts.length < 2) {
-            const errorMessage = "Failed to get HTTP status code from lsproxy response.";
-            coreExports.error(`[${commandId}] ${errorMessage}\nResponse: ${stdout}`);
-            return sendResponse(ws, commandId, RunnerResponseStatus.ERROR, {
-                message: errorMessage,
-                response: stdout,
-            });
-        }
-        const responseBody = parts[0];
-        const httpStatus = parseInt(parts[1], 10);
-        if (isNaN(httpStatus) || httpStatus < 200 || httpStatus >= 300) {
-            const errorMessage = `Lsproxy API returned a non-successful status code: ${httpStatus}`;
-            coreExports.error(`[${commandId}] ${errorMessage}\nResponse: ${responseBody}`);
-            return sendResponse(ws, commandId, RunnerResponseStatus.ERROR, {
-                message: errorMessage,
-                response: responseBody,
-                httpStatus: httpStatus,
-            });
-        }
-        coreExports.info(`[${commandId}] lsproxy command successful with status: ${httpStatus}`);
-        try {
-            const parsedBody = responseBody ? JSON.parse(responseBody) : {};
-            sendResponse(ws, commandId, RunnerResponseStatus.SUCCESS, parsedBody);
-        }
-        catch (e) {
-            const errorMessage = "Failed to parse lsproxy JSON response.";
-            coreExports.error(`[${commandId}] ${errorMessage}\nResponse: ${responseBody}`);
-            sendResponse(ws, commandId, RunnerResponseStatus.ERROR, {
-                message: errorMessage,
-                response: responseBody,
-            });
-        }
+    coreExports.info(`[${startTime.toISOString()}][${commandId}] Running lsproxy command: ${method} /v1${endpoint}`);
+    const options = {
+        hostname: "localhost",
+        port: 4444,
+        path: `/v1${endpoint}`,
+        method: method,
+        headers: {
+            "Content-Type": "application/json",
+        },
+    };
+    const req = require$$2.request(options, (res) => {
+        let responseBody = "";
+        res.on("data", (chunk) => {
+            responseBody += chunk;
+        });
+        res.on("end", () => {
+            const endTime = new Date();
+            const durationMs = Math.round(endTime.getTime() - startTime.getTime());
+            if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
+                const errorMessage = `Lsproxy API returned a non-successful status code: ${res.statusCode}`;
+                coreExports.error(`[${endTime.toISOString()}][${commandId}] ${errorMessage}\nResponse: ${responseBody}`);
+                return sendResponse(ws, commandId, RunnerResponseStatus.ERROR, {
+                    message: errorMessage,
+                    response: responseBody,
+                    httpStatus: res.statusCode,
+                });
+            }
+            coreExports.info(`[${endTime.toISOString()}][${commandId}] lsproxy command successful with status: ${res.statusCode} (duration: ${durationMs}ms)`);
+            try {
+                const parsedBody = responseBody ? JSON.parse(responseBody) : {};
+                sendResponse(ws, commandId, RunnerResponseStatus.SUCCESS, parsedBody);
+            }
+            catch (e) {
+                const errorMessage = "Failed to parse lsproxy JSON response.";
+                coreExports.error(`[${endTime.toISOString()}][${commandId}] ${errorMessage}\nResponse: ${responseBody}`);
+                sendResponse(ws, commandId, RunnerResponseStatus.ERROR, {
+                    message: errorMessage,
+                    response: responseBody,
+                });
+            }
+        });
     });
+    req.on("error", (e) => {
+        const errorMessage = `Lsproxy API command failed: ${e.message}`;
+        coreExports.error(`[${new Date().toISOString()}][${commandId}] ${errorMessage}`);
+        sendResponse(ws, commandId, RunnerResponseStatus.ERROR, {
+            message: errorMessage,
+        });
+    });
+    if (body) {
+        req.write(JSON.stringify(body));
+    }
+    req.end();
 }
 
 const RUNNER_TIMEOUT_MS = 1 * 60 * 60 * 1000; // 1 hour
@@ -32573,12 +32576,12 @@ async function run() {
         const ws = new WebSocket(websocketUrl);
         // --- WebSocket event handlers ---
         ws.on("open", () => {
-            coreExports.info("✅ WebSocket connection established. Awaiting instructions...");
+            coreExports.info(`[${new Date().toISOString()}] ✅ WebSocket connection established. Awaiting instructions...`);
         });
         ws.on("message", async (data) => {
             try {
                 const message = JSON.parse(data.toString());
-                coreExports.info(`⬇️ Received command: ${message.command} (ID: ${message.commandId})`);
+                coreExports.info(`[${new Date().toISOString()}] ⬇️ Received command: ${message.command} (ID: ${message.commandId})`);
                 switch (message.command) {
                     case BackendCommandType.EXECUTE_COMMAND:
                         handleExecuteCommand({ ws, commandId: message.commandId, params: message.params });
@@ -32594,21 +32597,21 @@ async function run() {
                         handleTerminate({ ws, commandId: message.commandId });
                         break;
                     default:
-                        coreExports.warning(`Unknown command received: ${message.command}`);
+                        coreExports.warning(`[${new Date().toISOString()}] Unknown command received: ${message.command}`);
                         sendResponse(ws, message.commandId, RunnerResponseStatus.ERROR, {
                             message: `Unknown command: ${message.command}`,
                         });
                 }
             }
             catch (error) {
-                coreExports.error(`Error processing message: ${data.toString()}`);
+                coreExports.error(`[${new Date().toISOString()}] Error processing message: ${data.toString()}`);
                 if (error instanceof Error) {
                     coreExports.setFailed(error.message);
                 }
             }
         });
         ws.on("close", (code, reason) => {
-            coreExports.info(`🔌 WebSocket connection closed. Code: ${code}, Reason: ${reason.toString()}`);
+            coreExports.info(`[${new Date().toISOString()}] 🔌 WebSocket connection closed. Code: ${code}, Reason: ${reason.toString()}`);
             clearTimeout(runnerTimeout);
             // Clean up any lingering processes on close
             runningProcesses.forEach((proc) => proc.kill());

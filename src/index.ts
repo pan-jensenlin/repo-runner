@@ -61,13 +61,17 @@ async function run(): Promise<void> {
     // --- WebSocket event handlers ---
 
     ws.on("open", () => {
-      core.info("✅ WebSocket connection established. Awaiting instructions...");
+      core.info(
+        `[${new Date().toISOString()}] ✅ WebSocket connection established. Awaiting instructions...`,
+      );
     });
 
     ws.on("message", async (data: WebSocket.Data) => {
       try {
         const message = JSON.parse(data.toString());
-        core.info(`⬇️ Received command: ${message.command} (ID: ${message.commandId})`);
+        core.info(
+          `[${new Date().toISOString()}] ⬇️ Received command: ${message.command} (ID: ${message.commandId})`,
+        );
 
         switch (message.command) {
           case BackendCommandType.EXECUTE_COMMAND:
@@ -84,13 +88,15 @@ async function run(): Promise<void> {
             handleTerminate({ ws, commandId: message.commandId });
             break;
           default:
-            core.warning(`Unknown command received: ${message.command}`);
+            core.warning(
+              `[${new Date().toISOString()}] Unknown command received: ${message.command}`,
+            );
             sendResponse(ws, message.commandId, RunnerResponseStatus.ERROR, {
               message: `Unknown command: ${message.command}`,
             });
         }
       } catch (error) {
-        core.error(`Error processing message: ${data.toString()}`);
+        core.error(`[${new Date().toISOString()}] Error processing message: ${data.toString()}`);
         if (error instanceof Error) {
           core.setFailed(error.message);
         }
@@ -98,7 +104,9 @@ async function run(): Promise<void> {
     });
 
     ws.on("close", (code, reason) => {
-      core.info(`🔌 WebSocket connection closed. Code: ${code}, Reason: ${reason.toString()}`);
+      core.info(
+        `[${new Date().toISOString()}] 🔌 WebSocket connection closed. Code: ${code}, Reason: ${reason.toString()}`,
+      );
       clearTimeout(runnerTimeout);
       // Clean up any lingering processes on close
       runningProcesses.forEach((proc) => proc.kill());

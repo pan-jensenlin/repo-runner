@@ -47,6 +47,8 @@ export function sendResponse(
     payload,
     runnerMetadata,
   };
-  core.info(`⬆️ Sending response for ${originalCommandId} with status ${status}`);
+  core.info(
+    `[${new Date().toISOString()}] ⬆️ Sending response for ${originalCommandId} with status ${status}`,
+  );
   ws.send(JSON.stringify(message));
 }

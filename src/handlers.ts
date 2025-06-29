@@ -1,10 +1,11 @@
-import { exec } from "child_process";
+import { spawn } from "child_process";
 import { WebSocket } from "ws";
 import { LsproxyAction, LsproxyMessageParams, RunnerResponseStatus } from "./types.js";
 import { sendResponse } from "./utils.js";
 import * as core from "@actions/core";
 import { runningProcesses } from "./processes.js";
 import { startLsproxy, getIsLsproxyReady, getLsproxyProcess } from "./lsproxy.js";
+import * as http from "http";
 
 export function handleExecuteCommand({
   ws,
@@ -15,12 +16,13 @@ export function handleExecuteCommand({
   commandId: string;
   params: { command: string };
 }) {
-  core.info(`[${commandId}] Executing: ${params.command}`);
+  const startTime = new Date();
 
-  const proc = exec(params.command, {
-    shell: "/bin/bash",
-    maxBuffer: 10 * 1024 * 1024, // 10MB,
-  });
+  core.info(`[${startTime.toISOString()}] [${commandId}] Executing: ${params.command}`);
+
+  const [command, ...args] = params.command.split(" ");
+  const proc = spawn(command, args, {});
+
   runningProcesses.set(commandId, proc);
 
   let stdout = "";
@@ -39,7 +41,12 @@ export function handleExecuteCommand({
   });
 
   proc.on("exit", (code) => {
-    core.info(`[${commandId}] Finished with exit code: ${code}`);
+    const endTime = new Date();
+    const durationMs = Math.round(endTime.getTime() - startTime.getTime());
+
+    core.info(
+      `[${endTime.toISOString()}] [${commandId}] Finished with exit code: ${code} (duration: ${durationMs}ms)`,
+    );
     runningProcesses.delete(commandId);
 
     const payload = {
@@ -53,7 +60,9 @@ export function handleExecuteCommand({
   });
 
   proc.on("error", (err) => {
-    core.error(`[${commandId}] Failed to start command: ${err.message}`);
+    core.error(
+      `[${new Date().toISOString()}] [${commandId}] Failed to start command: ${err.message}`,
+    );
     runningProcesses.delete(commandId);
     sendResponse(ws, commandId, RunnerResponseStatus.ERROR, {
       message: `Failed to execute command: ${err.message}`,
@@ -72,7 +81,9 @@ export function handleLsproxyCommand({
   commandId: string;
   params: LsproxyMessageParams;
 }) {
-  core.info(`[${commandId}] Received lsproxy command: ${params.action}`);
+  core.info(
+    `[${new Date().toISOString()}][${commandId}] Received lsproxy command: ${params.action}`,
+  );
 
   switch (params.action) {
     // Note: lsproxy is started automatically when the runner is up (see `index.ts`)
@@ -137,7 +148,9 @@ export function handleLsproxyCommand({
 
     default:
       const unhandledAction = (params as any).action;
-      core.warning(`Unknown lsproxy action: ${unhandledAction}`);
+      core.warning(
+        `[${new Date().toISOString()}][${commandId}] Unknown lsproxy action: ${unhandledAction}`,
+      );
       return sendResponse(ws, commandId, RunnerResponseStatus.ERROR, {
         message: `Unknown lsproxy action: ${unhandledAction}`,
       });
@@ -207,70 +220,83 @@ function runLsproxyApiCommand({
   method?: string;
   body?: object;
 }) {
+  const startTime = new Date();
+
   if (!getIsLsproxyReady()) {
-    core.error(`[${commandId}] lsproxy is not ready for endpoint: ${endpoint}`);
+    core.error(
+      `[${startTime.toISOString()}][${commandId}] lsproxy is not ready for endpoint: ${endpoint}`,
+    );
     sendResponse(ws, commandId, RunnerResponseStatus.ERROR, {
       message: "lsproxy is not ready.",
     });
     return;
   }
 
-  const RESPONSE_DELIMITER = "___HTTP_STATUS___";
-  const bodyData = body ? `--data '${JSON.stringify(body)}'` : "";
-  const headers = "--header 'Content-Type: application/json'";
-  const curlCmd = `curl -s -w "${RESPONSE_DELIMITER}%{http_code}" -X ${method} http://localhost:4444/v1${endpoint} ${headers} ${bodyData}`;
+  core.info(
+    `[${startTime.toISOString()}][${commandId}] Running lsproxy command: ${method} /v1${endpoint}`,
+  );
 
-  core.info(`[${commandId}] Running lsproxy command: ${curlCmd}`);
-  const proc = exec(curlCmd, { shell: "/bin/bash" });
-  let stdout = "";
-  let stderr = "";
-  proc.stdout?.on("data", (data) => (stdout += data));
-  proc.stderr?.on("data", (data) => (stderr += data));
+  const options: http.RequestOptions = {
+    hostname: "localhost",
+    port: 4444,
+    path: `/v1${endpoint}`,
+    method: method,
+    headers: {
+      "Content-Type": "application/json",
+    },
+  };
 
-  proc.on("exit", (code) => {
-    if (code !== 0) {
-      const errorMessage = `Lsproxy API command failed. curl exit code: ${code}`;
-      core.error(`[${commandId}] ${errorMessage}\nStderr: ${stderr}`);
-      return sendResponse(ws, commandId, RunnerResponseStatus.ERROR, {
-        message: errorMessage,
-        stderr: stderr,
-      });
-    }
+  const req = http.request(options, (res) => {
+    let responseBody = "";
+    res.on("data", (chunk) => {
+      responseBody += chunk;
+    });
 
-    const parts = stdout.split(RESPONSE_DELIMITER);
-    if (parts.length < 2) {
-      const errorMessage = "Failed to get HTTP status code from lsproxy response.";
-      core.error(`[${commandId}] ${errorMessage}\nResponse: ${stdout}`);
-      return sendResponse(ws, commandId, RunnerResponseStatus.ERROR, {
-        message: errorMessage,
-        response: stdout,
-      });
-    }
+    res.on("end", () => {
+      const endTime = new Date();
+      const durationMs = Math.round(endTime.getTime() - startTime.getTime());
 
-    const responseBody = parts[0];
-    const httpStatus = parseInt(parts[1], 10);
+      if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
+        const errorMessage = `Lsproxy API returned a non-successful status code: ${res.statusCode}`;
+        core.error(
+          `[${endTime.toISOString()}][${commandId}] ${errorMessage}\nResponse: ${responseBody}`,
+        );
+        return sendResponse(ws, commandId, RunnerResponseStatus.ERROR, {
+          message: errorMessage,
+          response: responseBody,
+          httpStatus: res.statusCode,
+        });
+      }
 
-    if (isNaN(httpStatus) || httpStatus < 200 || httpStatus >= 300) {
-      const errorMessage = `Lsproxy API returned a non-successful status code: ${httpStatus}`;
-      core.error(`[${commandId}] ${errorMessage}\nResponse: ${responseBody}`);
-      return sendResponse(ws, commandId, RunnerResponseStatus.ERROR, {
-        message: errorMessage,
-        response: responseBody,
-        httpStatus: httpStatus,
-      });
-    }
-
-    core.info(`[${commandId}] lsproxy command successful with status: ${httpStatus}`);
-    try {
-      const parsedBody = responseBody ? JSON.parse(responseBody) : {};
-      sendResponse(ws, commandId, RunnerResponseStatus.SUCCESS, parsedBody);
-    } catch (e) {
-      const errorMessage = "Failed to parse lsproxy JSON response.";
-      core.error(`[${commandId}] ${errorMessage}\nResponse: ${responseBody}`);
-      sendResponse(ws, commandId, RunnerResponseStatus.ERROR, {
-        message: errorMessage,
-        response: responseBody,
-      });
-    }
+      core.info(
+        `[${endTime.toISOString()}][${commandId}] lsproxy command successful with status: ${res.statusCode} (duration: ${durationMs}ms)`,
+      );
+      try {
+        const parsedBody = responseBody ? JSON.parse(responseBody) : {};
+        sendResponse(ws, commandId, RunnerResponseStatus.SUCCESS, parsedBody);
+      } catch (e) {
+        const errorMessage = "Failed to parse lsproxy JSON response.";
+        core.error(
+          `[${endTime.toISOString()}][${commandId}] ${errorMessage}\nResponse: ${responseBody}`,
+        );
+        sendResponse(ws, commandId, RunnerResponseStatus.ERROR, {
+          message: errorMessage,
+          response: responseBody,
+        });
+      }
+    });
   });
+
+  req.on("error", (e) => {
+    const errorMessage = `Lsproxy API command failed: ${e.message}`;
+    core.error(`[${new Date().toISOString()}][${commandId}] ${errorMessage}`);
+    sendResponse(ws, commandId, RunnerResponseStatus.ERROR, {
+      message: errorMessage,
+    });
+  });
+
+  if (body) {
+    req.write(JSON.stringify(body));
+  }
+  req.end();
 }

@@ -32364,8 +32364,7 @@ function handleExecuteCommand({ ws, commandId, params, }) {
             stdout: stdout,
             stderr: stderr,
         };
-        const status = code === 0 ? RunnerResponseStatus.SUCCESS : RunnerResponseStatus.ERROR;
-        sendResponse(ws, commandId, status, payload);
+        sendResponse(ws, commandId, RunnerResponseStatus.SUCCESS, payload);
     });
     proc.on("error", (err) => {
         coreExports.error(`[${new Date().toISOString()}] [${commandId}] Failed to start command: ${err.message}`);
@@ -32378,7 +32377,7 @@ function handleExecuteCommand({ ws, commandId, params, }) {
     });
 }
 function handleLsproxyCommand({ ws, commandId, params, }) {
-    coreExports.info(`[${new Date().toISOString()}][${commandId}] Received lsproxy command: ${params.action}`);
+    coreExports.info(`[${new Date().toISOString()}] [${commandId}] Received lsproxy command: ${params.action}`);
     switch (params.action) {
         // Note: lsproxy is started automatically when the runner is up (see `index.ts`)
         // but we keep this handler for manual restarts in case the lsproxy process is killed.

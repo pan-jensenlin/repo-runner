@@ -55,8 +55,7 @@ export function handleExecuteCommand({
       stderr: stderr,
     };
 
-    const status = code === 0 ? RunnerResponseStatus.SUCCESS : RunnerResponseStatus.ERROR;
-    sendResponse(ws, commandId, status, payload);
+    sendResponse(ws, commandId, RunnerResponseStatus.SUCCESS, payload);
   });
 
   proc.on("error", (err) => {
@@ -82,7 +81,7 @@ export function handleLsproxyCommand({
   params: LsproxyMessageParams;
 }) {
   core.info(
-    `[${new Date().toISOString()}][${commandId}] Received lsproxy command: ${params.action}`,
+    `[${new Date().toISOString()}] [${commandId}] Received lsproxy command: ${params.action}`,
   );
 
   switch (params.action) {

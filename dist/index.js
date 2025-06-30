@@ -1,4 +1,5 @@
-import require$$0 from 'os';
+import * as require$$0 from 'os';
+import require$$0__default from 'os';
 import require$$0$1 from 'crypto';
 import require$$1 from 'fs';
 import require$$1$5 from 'path';
@@ -118,7 +119,7 @@ function requireCommand () {
 	};
 	Object.defineProperty(command, "__esModule", { value: true });
 	command.issue = command.issueCommand = void 0;
-	const os = __importStar(require$$0);
+	const os = __importStar(require$$0__default);
 	const utils_1 = requireUtils$1();
 	/**
 	 * Commands
@@ -228,7 +229,7 @@ function requireFileCommand () {
 	/* eslint-disable @typescript-eslint/no-explicit-any */
 	const crypto = __importStar(require$$0$1);
 	const fs = __importStar(require$$1);
-	const os = __importStar(require$$0);
+	const os = __importStar(require$$0__default);
 	const utils_1 = requireUtils$1();
 	function issueFileCommand(command, message) {
 	    const filePath = process.env[`GITHUB_${command}`];
@@ -25204,7 +25205,7 @@ function requireSummary () {
 		};
 		Object.defineProperty(exports, "__esModule", { value: true });
 		exports.summary = exports.markdownSummary = exports.SUMMARY_DOCS_URL = exports.SUMMARY_ENV_VAR = void 0;
-		const os_1 = require$$0;
+		const os_1 = require$$0__default;
 		const fs_1 = require$$1;
 		const { access, appendFile, writeFile } = fs_1.promises;
 		exports.SUMMARY_ENV_VAR = 'GITHUB_STEP_SUMMARY';
@@ -26093,7 +26094,7 @@ function requireToolrunner () {
 	};
 	Object.defineProperty(toolrunner, "__esModule", { value: true });
 	toolrunner.argStringToArray = toolrunner.ToolRunner = void 0;
-	const os = __importStar(require$$0);
+	const os = __importStar(require$$0__default);
 	const events = __importStar(require$$0$3);
 	const child = __importStar(require$$2$2);
 	const path = __importStar(require$$1$5);
@@ -26836,7 +26837,7 @@ function requirePlatform () {
 		};
 		Object.defineProperty(exports, "__esModule", { value: true });
 		exports.getDetails = exports.isLinux = exports.isMacOS = exports.isWindows = exports.arch = exports.platform = void 0;
-		const os_1 = __importDefault(require$$0);
+		const os_1 = __importDefault(require$$0__default);
 		const exec = __importStar(requireExec());
 		const getWindowsInfo = () => __awaiter(void 0, void 0, void 0, function* () {
 		    const { stdout: version } = yield exec.getExecOutput('powershell -command "(Get-CimInstance -ClassName Win32_OperatingSystem).Version"', undefined, {
@@ -26939,7 +26940,7 @@ function requireCore () {
 		const command_1 = requireCommand();
 		const file_command_1 = requireFileCommand();
 		const utils_1 = requireUtils$1();
-		const os = __importStar(require$$0);
+		const os = __importStar(require$$0__default);
 		const path = __importStar(require$$1$5);
 		const oidc_utils_1 = requireOidcUtils();
 		/**
@@ -32546,6 +32547,7 @@ function runLsproxyApiCommand({ ws, commandId, endpoint, method = "GET", body, }
 const RUNNER_TIMEOUT_MS = 1 * 60 * 60 * 1000; // 1 hour
 function forceShutdown(reason) {
     coreExports.setFailed(reason);
+    clearInterval(statsInterval);
     runningProcesses.forEach((proc, id) => {
         coreExports.info(`  - Killing process for command ${id}`);
         proc.kill("SIGKILL");
@@ -32553,9 +32555,49 @@ function forceShutdown(reason) {
     process.exit(1);
 }
 let runnerTimeout;
+let statsInterval;
+let previousCpuTimes = require$$0.cpus().map((c) => c.times);
+function logSystemStats() {
+    // System Memory
+    const totalMemory = require$$0.totalmem();
+    const freeMemory = require$$0.freemem();
+    const usedMemory = totalMemory - freeMemory;
+    const memUsage = `${(usedMemory / 1024 / 1024 / 1024).toFixed(2)}GB / ${(totalMemory /
+        1024 /
+        1024 /
+        1024).toFixed(2)}GB`;
+    // Process Memory
+    const processMem = process.memoryUsage();
+    const processMemUsage = `RSS: ${(processMem.rss / 1024 / 1024).toFixed(2)}MB, Heap: ${(processMem.heapUsed /
+        1024 /
+        1024).toFixed(2)}MB`;
+    // CPU Usage
+    const currentCpus = require$$0.cpus();
+    let totalIdle = 0;
+    let totalTick = 0;
+    for (let i = 0; i < currentCpus.length; i++) {
+        const start = previousCpuTimes[i];
+        const end = currentCpus[i].times;
+        const idle = end.idle - start.idle;
+        const total = end.user -
+            start.user +
+            (end.nice - start.nice) +
+            (end.sys - start.sys) +
+            (end.irq - start.irq) +
+            idle;
+        totalIdle += idle;
+        totalTick += total;
+    }
+    const cpuUsage = (totalTick > 0 ? 100 * (1 - totalIdle / totalTick) : 0).toFixed(2);
+    previousCpuTimes = currentCpus.map((c) => c.times);
+    // Running child processes
+    const numProcesses = runningProcesses.size;
+    coreExports.info(`[STATS] MEM: ${memUsage} (${((usedMemory / totalMemory) * 100).toFixed(2)}%) | Process MEM: ${processMemUsage} | CPU: ${cpuUsage}% | Child Processes: ${numProcesses}`);
+}
 async function run() {
     try {
         runnerTimeout = setTimeout(() => forceShutdown(`Runner timed out after ${RUNNER_TIMEOUT_MS / 1000}s.`), RUNNER_TIMEOUT_MS);
+        statsInterval = setInterval(logSystemStats, 10_000);
         const tuskUrl = coreExports.getInput("tuskUrl", { required: true });
         const url = new URL(tuskUrl);
         const queryParams = url.searchParams;
@@ -32593,6 +32635,7 @@ async function run() {
                         break;
                     case BackendCommandType.TERMINATE:
                         clearTimeout(runnerTimeout);
+                        clearInterval(statsInterval);
                         handleTerminate({ ws, commandId: message.commandId });
                         break;
                     default:
@@ -32612,6 +32655,7 @@ async function run() {
         ws.on("close", (code, reason) => {
             coreExports.info(`[${new Date().toISOString()}] 🔌 WebSocket connection closed. Code: ${code}, Reason: ${reason.toString()}`);
             clearTimeout(runnerTimeout);
+            clearInterval(statsInterval);
             // Clean up any lingering processes on close
             runningProcesses.forEach((proc) => proc.kill());
             if (code !== 1000) {

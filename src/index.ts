@@ -10,11 +10,13 @@ import {
 } from "./handlers.js";
 import { sendResponse } from "./utils.js";
 import { startLsproxy } from "./lsproxy.js";
+import * as os from "os";
 
 const RUNNER_TIMEOUT_MS = 1 * 60 * 60 * 1000; // 1 hour
 
 function forceShutdown(reason: string) {
   core.setFailed(reason);
+  clearInterval(statsInterval);
 
   runningProcesses.forEach((proc, id) => {
     core.info(`  - Killing process for command ${id}`);
@@ -25,6 +27,60 @@ function forceShutdown(reason: string) {
 }
 
 let runnerTimeout: NodeJS.Timeout;
+let statsInterval: NodeJS.Timeout;
+
+let previousCpuTimes = os.cpus().map((c) => c.times);
+
+function logSystemStats() {
+  // System Memory
+  const totalMemory = os.totalmem();
+  const freeMemory = os.freemem();
+  const usedMemory = totalMemory - freeMemory;
+  const memUsage = `${(usedMemory / 1024 / 1024 / 1024).toFixed(2)}GB / ${(
+    totalMemory /
+    1024 /
+    1024 /
+    1024
+  ).toFixed(2)}GB`;
+
+  // Process Memory
+  const processMem = process.memoryUsage();
+  const processMemUsage = `RSS: ${(processMem.rss / 1024 / 1024).toFixed(2)}MB, Heap: ${(
+    processMem.heapUsed /
+    1024 /
+    1024
+  ).toFixed(2)}MB`;
+
+  // CPU Usage
+  const currentCpus = os.cpus();
+  let totalIdle = 0;
+  let totalTick = 0;
+  for (let i = 0; i < currentCpus.length; i++) {
+    const start = previousCpuTimes[i];
+    const end = currentCpus[i].times;
+    const idle = end.idle - start.idle;
+    const total =
+      end.user -
+      start.user +
+      (end.nice - start.nice) +
+      (end.sys - start.sys) +
+      (end.irq - start.irq) +
+      idle;
+    totalIdle += idle;
+    totalTick += total;
+  }
+  const cpuUsage = (totalTick > 0 ? 100 * (1 - totalIdle / totalTick) : 0).toFixed(2);
+  previousCpuTimes = currentCpus.map((c) => c.times);
+
+  // Running child processes
+  const numProcesses = runningProcesses.size;
+
+  core.info(
+    `[STATS] MEM: ${memUsage} (${((usedMemory / totalMemory) * 100).toFixed(
+      2,
+    )}%) | Process MEM: ${processMemUsage} | CPU: ${cpuUsage}% | Child Processes: ${numProcesses}`,
+  );
+}
 
 async function run(): Promise<void> {
   try {
@@ -32,6 +88,8 @@ async function run(): Promise<void> {
       () => forceShutdown(`Runner timed out after ${RUNNER_TIMEOUT_MS / 1000}s.`),
       RUNNER_TIMEOUT_MS,
     );
+
+    statsInterval = setInterval(logSystemStats, 10_000);
 
     const tuskUrl: string = core.getInput("tuskUrl", { required: true });
 
@@ -85,6 +143,7 @@ async function run(): Promise<void> {
             break;
           case BackendCommandType.TERMINATE:
             clearTimeout(runnerTimeout);
+            clearInterval(statsInterval);
             handleTerminate({ ws, commandId: message.commandId });
             break;
           default:
@@ -108,6 +167,7 @@ async function run(): Promise<void> {
         `[${new Date().toISOString()}] 🔌 WebSocket connection closed. Code: ${code}, Reason: ${reason.toString()}`,
       );
       clearTimeout(runnerTimeout);
+      clearInterval(statsInterval);
       // Clean up any lingering processes on close
       runningProcesses.forEach((proc) => proc.kill());
       if (code !== 1000) {

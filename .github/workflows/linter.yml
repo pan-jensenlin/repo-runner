@@ -1,21 +1,21 @@
-name: Lint
+name: Tusk Test Runner
 
 on:
-  pull_request:
-    branches:
-      - main
-  push:
-    branches:
-      - main
-
-permissions:
-  contents: read
-  packages: read
-  statuses: write
+  workflow_dispatch:
+    inputs:
+      runId:
+        description: "Tusk Run ID"
+        required: true
+      tuskUrl:
+        description: "Tusk server URL"
+        required: true
+      commitSha:
+        description: "Commit SHA to checkout"
+        required: true
 
 jobs:
-  lint:
-    name: Lint Codebase
+  test-action:
+    name: Tusk Test Runner
     runs-on: ubuntu-latest
 
     steps:
@@ -23,16 +23,14 @@ jobs:
         id: checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        id: setup-node
-        uses: actions/setup-node@v4
+      - name: Start runner
+        id: test-action
+        uses: ./
         with:
-          node-version-file: .node-version
-          cache: npm
-
-      - name: Install Dependencies
-        id: install
-        run: npm ci
-
-      - name: Lint check
-        run: npm run format:check
+          runId: ${{ github.event.inputs.runId }}
+          tuskUrl: ${{ github.event.inputs.tuskUrl }}
+          commitSha: ${{ github.event.inputs.commitSha }}
+          authToken: ${{ secrets.TUSK_AUTH_TOKEN }}
+          testFramework: "pytest"
+          testFileRegex: "^tests/.*(test_.*|.*_test).py$"
+          testScript: "pytest {{file}}"

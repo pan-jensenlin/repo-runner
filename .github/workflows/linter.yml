@@ -23,7 +23,7 @@ jobs:
         id: checkout
         uses: actions/checkout@v4
 
-      - name: Start runner
+      - name: Tusk Test runner
         id: test-action
         uses: ./
         with:

@@ -44,3 +44,20 @@ jobs:
       with:
         # Add any necessary inputs for the Tusk Action
         config-file: .tusk.yml
+
+  run-linters:
+    name: Run linters
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v4
+
+      # ... any other linting steps (e.g., using `wearerequired/lint-action`) ...
+
+      # Add the Tusk test runner step
+      - name: Run Tusk tests
+        uses: usetusk/tusk-run-tests@v1 # Use the latest version available
+        with:
+          # Your Tusk-specific inputs, if any
+          token: ${{ secrets.GITHUB_TOKEN }}
+          # other configuration options

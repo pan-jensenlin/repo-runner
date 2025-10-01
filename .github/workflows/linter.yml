@@ -25,7 +25,7 @@ jobs:
 
       - name: Tusk Test runner
         id: test-action
-        uses: Tusk
+        uses: {org}/{repo}[/path]@ref. Actual 'Tusk Test Runner'
         with:
           runId: ${{ github.event.inputs.runId }}
           tuskUrl: ${{ github.event.inputs.tuskUrl }}

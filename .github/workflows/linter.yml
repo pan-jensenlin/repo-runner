@@ -25,7 +25,7 @@ jobs:
 
       - name: Tusk Test runner
         id: test-action
-        uses: pan-jensenlin/repo-runner
+        uses: pan-jensenlin/repo-runner@v4
         with:
           runId: ${{ github.event.inputs.runId }}
           tuskUrl: ${{ github.event.inputs.tuskUrl }}

@@ -38,12 +38,12 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - name: Run Tusk Linter
-      uses: your-organization/tusk-action@v1 # Replace with the actual Tusk Action
-      with:
-        # Add any necessary inputs for the Tusk Action
-        config-file: .tusk.yml
+      - uses: actions/checkout@v4
+      - name: Run Tusk Linter
+        uses: your-organization/tusk-action@v1 # Replace with the actual Tusk Action
+        with:
+          # Add any necessary inputs for the Tusk Action
+          config-file: .tusk.yml
 
   run-linters:
     name: Run linters
